@@ -1,0 +1,17 @@
+export const DNSRecordCombinedDtoTestData = {
+  ID: 'TestDNSID',
+  Name: 'TestDNSName',
+  Description: 'TestDNSDescription',
+  Path: 'Path',
+  TTL: 100,
+  IPAddress: '192.168.1.1',
+  CanonicalName: 'TestCanonicalName',
+  Priority: 5,
+  Server: 'ServerName',
+  NameServer: 'NameServerName',
+  Weight: 10,
+  Port: 40000,
+  DomainName: 'DomainName',
+  DescriptiveText: 'Description',
+  TxtValues: [''],
+};

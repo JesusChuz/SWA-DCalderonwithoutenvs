@@ -1,0 +1,55 @@
+name: Rolling_UI_$(Date:yyMMdd)$(Rev:.r)
+
+pr: none
+
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+schedules:
+- cron: "0 */5 * * *"
+  displayName: "On code change - Run Every 5 hours Rolling build"
+  branches:
+    include:
+      - main
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    dependsOn: []
+    jobs:
+      - template: ../templates/react-tests-stage.yml
+        parameters:
+          reactEnvironment: 'development'
+          isDeployment: true
+  - stage: NonProd_TagBranch
+    dependsOn: [NonProd_CheckCodeQuality]
+    jobs:
+      - template: ../templates/tag-branch.yml
+        parameters: 
+          tag_build: '$(Rev:.r)'
+          tag_msg: 'MyWorkspace.UI $(Date:yyMMdd)$(Rev:.r)'
+  - stage: NonProd_DeployUI
+    dependsOn: [NonProd_TagBranch,NonProd_CheckCodeQuality]
+    jobs:
+      - template: ../templates/deploy-static-web-app.yml
+        parameters:
+          reactEnvironment: 'development' 
+          deploymentToken: $(DEV_DEPLOYMENT_TOKEN)
+          devOpsEnv: 'MW-Dev'
+          service: 'UI'
+  - stage: Prod_BuildUI
+    dependsOn: [NonProd_CheckCodeQuality]
+    jobs:
+      - template: ../templates/react-build-stage.yml
+        parameters:
+          reactEnvironment: 'production'
+  - stage: Prod_DeployUI
+    dependsOn: [Prod_BuildUI, NonProd_DeployUI]
+    jobs:
+      - template: ../templates/deploy-static-web-app.yml
+        parameters:
+            reactEnvironment: 'production' 
+            deploymentToken: $(PROD_DEPLOYMENT_TOKEN)
+            devOpsEnv: 'MW-Prod'
+            service: 'UI'

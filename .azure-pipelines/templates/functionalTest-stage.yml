@@ -1,0 +1,68 @@
+parameters:
+  - name: solution
+    type: string
+  - name: project
+    type: string
+  - name: repo
+    type: string
+  - name: containerRegistry
+    type: string
+  - name: k8Path
+    type: string
+  - name: isFrontend
+    default: false
+    type: boolean
+  - name: projectFolder
+    type: string
+
+jobs:
+      - job: BuildRelease
+        displayName: 'Build and Deploy Image'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: NuGetCommand@2
+            displayName: Nuget Restore
+            inputs:
+              command: 'restore'
+              restoreSolution: '**/${{ parameters.solution }}.sln'
+              feedsToUse: 'config'
+          - task: Npm@1
+            displayName: Npm Install
+            condition: "eq('${{ parameters.isFrontend }}', true)"
+            inputs:
+              command: 'install'
+              workingDir: '$(Build.SourcesDirectory)/Microsoft.MyWorkspace.UI'
+              customEndpoint: 'OCVConnection, CSEO Coherence NPM Feed, M365 NPM Feed'
+#          - task: UseDotNet@2
+#            displayName: 'Use .NET Core sdk 5'
+#            inputs:
+#              packageType: 'sdk'
+#              version: '5.x'
+          - task: DotNetCoreCLI@2
+            displayName: .NET Publish
+            inputs:
+              command: 'publish'
+              publishWebProjects: false
+              projects: '${{ parameters.solution }}/${{ parameters.project }}'
+              zipAfterPublish: false
+              modifyOutputPath: false
+              arguments: '--configuration Release'
+
+          - task: PowerShell@2
+            displayName: k8 Replacement Script
+            inputs:
+              filePath: './.k8s/k8ParamReplacement.ps1'
+              arguments: '''${{ parameters.k8Path }}'' @{''$VERSION''=$(Build.BuildId);}'
+              
+          - task: Docker@2
+            displayName: Docker Build and Publish Image
+            inputs:
+              containerRegistry: '${{ parameters.containerRegistry }}'
+              repository: ${{ parameters.repo }} 
+              command: 'buildAndPush'
+              Dockerfile: '${{ parameters.solution }}/${{ parameters.project }}/Dockerfile'
+              tags: |
+                $(Build.BuildId)
+                latest
+

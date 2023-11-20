@@ -1,0 +1,26 @@
+# Copyright (c) Microsoft. All rights reserved.
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+  
+variables:
+  - name: solution
+    value: 'Microsoft.Vmas.ResourceProvisioningService'
+  - name: buildPlatform
+    value: 'Any CPU'
+  - name: buildConfiguration
+    value: 'Release'
+
+
+name: PR_$(Date:yyMMdd)$(Rev:.r)
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    jobs:
+      - template: ../templates/codequality-stage.yml
+        parameters:
+          solution: '$(solution)'
+          projectFolder: ['Microsoft.Vmas.DataTransferObjects','Microsoft.Vmas.Models','Microsoft.Vmas.ProvisioningApi','Microsoft.Vmas.Repository','Microsoft.Vmas.ResourceApi']
+          buildPlatform: '$(buildPlatform)'
+          buildConfiguration: '$(buildConfiguration)'

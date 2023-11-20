@@ -1,0 +1,34 @@
+# Copyright (c) Microsoft. All rights reserved.
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+  
+variables:
+  - name: solution
+    value: 'Microsoft.MyWorkspace.GatewayAggregator'
+  - name: buildPlatform
+    value: 'Any CPU'
+  - name: buildConfiguration
+    value: 'Release'
+
+
+name: PR_$(Date:yyMMdd)$(Rev:.r)
+
+stages:
+  - stage: NonProd_FrontendAudit
+    jobs:
+    - job:
+      displayName: "React Tests"
+      pool:
+        vmImage: "windows-latest"
+        demands:
+          - npm
+      steps:
+        - script: "npm audit --audit-level=high --registry=https://registry.npmjs.org/"
+          displayName: "NPM - audit high"
+          workingDirectory: "Microsoft.MyWorkspace.UI"
+        - script: "npm audit --audit-level=critical --registry=https://registry.npmjs.org/"
+          displayName: "NPM - audit critical"
+          workingDirectory: "Microsoft.MyWorkspace.UI"
+        

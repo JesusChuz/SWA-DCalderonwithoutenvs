@@ -1,0 +1,46 @@
+trigger: none
+
+schedules:
+- cron: "0 0 L * *"
+  displayName: Last day of the month build
+  branches:
+    include:
+    - main
+
+pool:
+  vmImage: 'windows-latest'
+
+parameters:
+  - name: maxPullRequests
+    displayName: "The maximum number of pull requests to generate"
+    type: number
+    default: 5
+  - name: packagesToDefinitelyUpdate
+    displayName: "The packages that should definitely be updated"
+    type: object
+
+name: DependencyUpdater_$(Date:yyMMdd)$(Rev:.r)
+
+jobs:
+  - job:
+    displayName: "Update Project Dependencies"
+    steps:
+    - task: NuGetToolInstaller@1
+    - task: NuGetCommand@2
+      displayName: "Nuget Restore"
+      inputs:
+        command: 'restore'
+        restoreSolution: '**/AdminScripts/DependencyUpdater/*.sln' 
+        feedsToUse: 'config'
+        noCache: 'true'
+    - task: DotNetCoreCLI@2
+      displayName: "Dotnet Build"
+      inputs:
+        command: build
+        projects: '**/AdminScripts/DependencyUpdater/*.csproj'
+    - task: DotNetCoreCLI@2
+      displayName: "Dotnet Run"
+      inputs:
+        command: run
+        workingDirectory: 'AdminScripts/DependencyUpdater'
+        arguments: '$(PAT) ${{ parameters.maxPullRequests }}'

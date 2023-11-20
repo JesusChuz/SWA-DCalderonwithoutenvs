@@ -1,0 +1,154 @@
+parameters:
+  - name: solution
+    type: string
+  - name: project
+    type: string
+  - name: repo
+    type: string
+  - name: devContainerRegistry
+    type: string
+  - name: prodContainerRegistry
+    type: string
+  - name: k8Path
+    type: string
+  - name: isFrontend
+    default: false
+    type: boolean
+  - name: isProduction
+    default: false
+    type: boolean
+jobs:
+      - job: BuildRelease
+        variables:
+          - name: front_end_working_directory
+            value: '$(Build.SourcesDirectory)/Microsoft.MyWorkspace.UI'
+          - name: NPM_CACHE_RESTORED
+            value: 'false'
+          - name: publishFlag
+            ${{ if and(eq(parameters.isFrontend, true), eq(parameters.isProduction, true)) }}:
+              value: "-p:NodeEnv=Production"
+            ${{ if and(eq(parameters.isFrontend, true), eq(parameters.isProduction, false)) }}:
+              value: "-p:NodeEnv=Development"
+            ${{ if eq(parameters.isFrontend, false) }}:
+              value: ""
+          - name: dockerFileName
+            ${{ if eq(parameters.isFrontend, true) }}:
+              value: "Dockerfile.old"
+            ${{ if eq(parameters.isFrontend, false) }}:
+              value: "Dockerfile"
+        displayName: 'Build and Deploy Image'
+        pool:
+          vmImage: 'ubuntu-latest'
+          demands:
+            - npm
+        steps:
+          - task: Cache@2
+            inputs:
+              key: 'npm | "$(Agent.OS)" | $(front_end_working_directory)/package-lock.json'
+              path: $(front_end_working_directory)/node_modules
+              cacheHitVar: NPM_CACHE_RESTORED
+            displayName: Cache node_modules
+            condition: eq('${{ parameters.isFrontend }}', 'true')
+          - task: DotNetCoreCLI@2
+            displayName: 'NuGet restore'
+            inputs:
+              command: 'restore'
+              projects: '${{ parameters.solution }}/${{ parameters.project }}'
+              feedsToUse: 'config'
+              nugetConfigPath: 'nuget.config'
+              verbosityRestore: 'Normal'
+          - task: DotNetCoreCLI@2
+            displayName: Build
+            inputs:
+              command: build
+              projects: '${{ parameters.solution }}/${{ parameters.project }}'
+              arguments: '--configuration Release' 
+              feedsToUse: 'config'
+              nugetConfigPath: 'nuget.config'
+          - task: Npm@1
+            displayName: "NPM - Install"
+            condition: and(eq('${{ parameters.isFrontend }}', 'true'), ne(variables.NPM_CACHE_RESTORED, true))
+            inputs:
+                command: "custom"
+                customCommand: "ci --prefer-offline --no-audit"
+                workingDir: "$(front_end_working_directory)"
+                customEndpoint: "Coherence v4 Feed, Office NPM Feed"
+          - task: PowerShell@2
+            displayName: Digital Assistant Replacement Script
+            condition: "and(eq('${{ parameters.isFrontend }}', true), eq('${{ parameters.isProduction }}', true)) "
+            inputs:
+              filePath: './.k8s/k8ParamReplacement.ps1'
+              arguments: '''$(front_end_working_directory)/public/index.html'' @{''onefinancebot-staging''=''onefinancebot'';}'
+          - task: DotNetCoreCLI@2
+            displayName: .NET Publish
+            inputs:
+              command: 'publish'
+              publishWebProjects: false
+              projects: '${{ parameters.solution }}/${{ parameters.project }}'
+              zipAfterPublish: false
+              modifyOutputPath: false
+              noCache: false
+              arguments: '--configuration Release ${{ variables.publishFlag }}'
+          - task: PowerShell@2
+            displayName: k8 Replacement Script - common
+            inputs:
+              filePath: './.k8s/k8ParamReplacement.ps1'
+              arguments: '''${{ parameters.k8Path }}'' @{''$version''=$(Build.BuildId);}'           
+          - task: Docker@2
+            displayName: Docker Build and Publish Image - Dev
+            inputs:
+              containerRegistry: '${{ parameters.devContainerRegistry }}'
+              repository: ${{ parameters.repo }} 
+              command: 'buildAndPush'
+              Dockerfile: '${{ parameters.solution }}/${{ parameters.project }}/${{ variables.dockerFileName }}'
+              tags: |
+                $(Build.BuildId)
+                latest
+          - task: Docker@2
+            displayName: Docker Build and Publish Image - Prod
+            inputs:
+              containerRegistry: '${{ parameters.prodContainerRegistry }}'
+              repository: ${{ parameters.repo }} 
+              command: 'buildAndPush'
+              Dockerfile: '${{ parameters.solution }}/${{ parameters.project }}/${{ variables.dockerFileName }}'
+              tags: |
+                $(Build.BuildId)
+                latest
+          - task: CopyFiles@2
+            displayName: Copy k8s to Artifact
+            inputs:
+              SourceFolder: '$(Build.SourcesDirectory)/.k8s'
+              Contents: '**'
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+          - task: CopyFiles@2
+            displayName: 'Copy configuration files to build output'
+            inputs:
+              SourceFolder: '${{ parameters.solution }}/Deploy/Configs'
+              Contents: |
+                config-dev.json
+                config-dev-eastus.json
+                config-dev-southcentralus.json
+                config-kvref-dev-eastus.json
+                config-kvref-dev-southcentralus.json
+                config-prod.json
+                config-prod-westus2.json
+                config-prod-eastus2.json
+                config-prod-westus3.json
+                config-kvref-prod.json
+                config-kvref-prod-eastus2.json
+                config-kvref-prod-westus3.json
+              TargetFolder: '$(build.artifactstagingdirectory)/Configs'
+          - task: CopyFiles@2
+            displayName: 'Copy common configuration files to build output'
+            inputs:
+              SourceFolder: '$(Build.SourcesDirectory)/.config/Common-configs'
+              Contents: |
+                common-kvref-dev-eastus.json
+                common-kvref-prod-eastus.json
+              TargetFolder: '$(build.artifactstagingdirectory)/Configs'
+          - task: PublishBuildArtifacts@1
+            displayName: Publish Artifact
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'drop'
+              publishLocation: 'Container'

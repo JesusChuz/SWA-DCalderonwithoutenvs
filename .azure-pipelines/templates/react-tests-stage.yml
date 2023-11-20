@@ -1,0 +1,140 @@
+parameters:
+  - name: reactEnvironment
+    type: string
+  - name: isDeployment
+    default: false
+    type: boolean
+
+jobs:
+  - job:
+    variables:
+      - name: npm_config_cache
+        value: '$(Pipeline.Workspace)/.npm'
+      - name: front_end_working_directory
+        value: '$(Build.SourcesDirectory)/Microsoft.MyWorkspace.UI'
+      - name: NPM_CACHE_RESTORED
+        value: 'false'
+    displayName: 'NonProd React Tests'
+    pool:
+      vmImage: 'ubuntu-latest'
+      demands:
+        - npm
+    steps:
+      - task: Cache@2
+        inputs:
+          key: 'npm | "$(Agent.OS)" | $(front_end_working_directory)/package-lock.json'
+          path: $(front_end_working_directory)/node_modules
+          cacheHitVar: NPM_CACHE_RESTORED
+        displayName: Cache node_modules
+      - task: Npm@1
+        displayName: 'NPM - Install'
+        inputs:
+          command: 'custom'
+          customCommand: 'ci --prefer-offline --no-audit'
+          workingDir: '$(front_end_working_directory)'
+          customEndpoint: 'Coherence v4 Feed, Office NPM Feed 2'
+        condition: ne(variables.NPM_CACHE_RESTORED, 'true')
+      - task: Npm@1
+        displayName: 'NPM - run build'
+        inputs:
+          command: 'custom'
+          workingDir: '$(front_end_working_directory)'
+          customCommand: 'run build:${{ parameters.reactEnvironment }}'
+      - task: Npm@1
+        displayName: 'NPM - Install bundle sizes'
+        continueOnError: '${{ parameters.isDeployment }}'
+        inputs:
+          command: 'custom'
+          customCommand: 'i'
+          workingDir: '$(front_end_working_directory)/bundleSizes'
+      - task: AzurePowershell@5
+        displayName: "Add IP to key vault firewall"
+        condition: eq('${{ parameters.isDeployment }}', 'true')
+        continueOnError: 'true'
+        inputs:
+          ScriptType: InlineScript
+          azurePowerShellVersion: LatestVersion
+          azureSubscription: $(azureSubscription)
+          Inline: | 
+            ## Need to get agent ip address for key vault deployment. Access is denied due to network isolation.
+            $WebResponse = Invoke-WebRequest -Uri https://api.ipify.org/?format=json -UseBasicParsing
+            $IPAddress = $WebResponse.Content | ConvertFrom-Json | Select-Object -ExpandProperty ip
+            Add-AzKeyVaultNetworkRule -VaultName $(appKeyVaultName) -ResourceGroupName $(keyVaultResourceGroup) -IpAddressRange $IPAddress
+            Write-Host ("##vso[task.setvariable variable=CURRENT_IP_ADDRESS;issecret=false]$IPAddress")
+      - task: AzurePowershell@5
+        displayName: "Get secrets and set as variables"
+        condition: eq('${{ parameters.isDeployment }}', 'true')
+        continueOnError: 'true'
+        inputs:
+          ScriptType: InlineScript
+          azurePowerShellVersion: LatestVersion
+          azureSubscription: $(azureSubscription)
+          Inline: | 
+            $AppInsightsConnectionString = Get-AzKeyVaultSecret -VaultName $(appKeyVaultName) -Name "AppInsightsConnectionString" -AsPlainText
+            Write-Host ("##vso[task.setvariable variable=APP_INSIGHTS_CONNECTION_STRING;]$AppInsightsConnectionString")
+      - task: AzurePowershell@5
+        displayName: "Remove IP from key vault firewall"
+        condition: eq('${{ parameters.isDeployment }}', 'true')
+        continueOnError: 'true'
+        inputs:
+          ScriptType: InlineScript
+          azurePowerShellVersion: LatestVersion
+          azureSubscription: $(azureSubscription)
+          Inline: | 
+            Remove-AzKeyVaultNetworkRule -VaultName $(appKeyVaultName) -ResourceGroupName $(keyVaultResourceGroup) -IpAddressRange '$(CURRENT_IP_ADDRESS)/32'
+      - task: Npm@1
+        displayName: 'NPM - run webpack analyze'
+        continueOnError: 'true'
+        inputs:
+          command: 'custom'
+          workingDir: '$(front_end_working_directory)'
+          customCommand: 'run webpack:analyze'
+        condition: eq('${{ parameters.isDeployment }}', 'true')
+      - task: Npm@1
+        displayName: 'NPM - report bundle sizes'
+        continueOnError: 'true'
+        inputs:
+          command: 'custom'
+          workingDir: '$(front_end_working_directory)/bundleSizes'
+          customCommand: 'run ${{ parameters.reactEnvironment }}'
+        condition: eq('${{ parameters.isDeployment }}', 'true')
+      - task: Npm@1
+        displayName: 'NPM - check prettier'
+        inputs:
+          command: 'custom'
+          workingDir: '$(front_end_working_directory)'
+          customCommand: 'run prettier:check'
+      - task: Npm@1
+        displayName: 'NPM - check lint'
+        inputs:
+          command: 'custom'
+          workingDir: '$(front_end_working_directory)'
+          customCommand: 'run lint:check'
+      - task: Npm@1
+        displayName: 'NPM - run unit tests'
+        inputs:
+          command: 'custom'
+          workingDir: '$(front_end_working_directory)'
+          customCommand: 'run test:ci'
+      - task: PublishTestResults@2
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: '**/*junit.xml'
+          failTaskOnFailedTests: false
+      - task: CopyFiles@2
+        displayName: 'Copy UI Files'
+        inputs:
+          SourceFolder: '$(Build.SourcesDirectory)/Microsoft.MyWorkspace.UI/build'
+          Contents: |
+            **/*
+            !bundle-stats.json
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/${{ parameters.reactEnvironment }}'
+        condition: eq('${{ parameters.isDeployment }}', 'true')
+      - task: PublishBuildArtifacts@1
+        displayName: Publish Artifact
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)/${{ parameters.reactEnvironment }}'
+          ArtifactName: '${{ parameters.reactEnvironment }}'
+          publishLocation: 'Container'
+        condition: eq('${{ parameters.isDeployment }}', 'true')

@@ -1,0 +1,37 @@
+# Copyright (c) Microsoft. All rights reserved.
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+  
+variables:
+  - name: solution
+    value: 'Microsoft.Vmas.Common'
+  - name: buildPlatform
+    value: 'Any CPU'
+  - name: buildConfiguration
+    value: 'Release'
+
+name: PR_$(Date:yyMMdd)$(Rev:.r)
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    jobs:
+      - template: ../templates/codequality-stage.yml
+        parameters:
+          solution: '$(solution)'
+          projectFolder:
+            [
+              'Microsoft.Vmas.Common.AppConfiguration',
+              'Microsoft.Vmas.Common.AzureServiceBus',
+              'Microsoft.Vmas.Common.Cache',
+              'Microsoft.Vmas.Common.HttpClientService',
+              'Microsoft.Vmas.Common.HttpExtensions',
+              'Microsoft.Vmas.Common.Models',
+              'Microsoft.Vmas.Common.Storage',
+              'Microsoft.MyWorkspace.Common.Logger',
+              'Microsoft.MyWorkspace.Common.Models',
+              'Microsoft.MyWorkspace.Mims'
+            ]
+          buildPlatform: '$(buildPlatform)'
+          buildConfiguration: '$(buildConfiguration)'

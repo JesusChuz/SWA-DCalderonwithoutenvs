@@ -1,0 +1,514 @@
+parameters:
+- name: 'env'
+  type: string
+- name: 'deploylocation'
+  type: string
+- name: 'devOpsEnv'
+  type: string
+- name: 'serviceConnection'
+  type: string
+- name: 'service'
+  type: string
+- name: 'label'
+  type: string
+- name: 'appConfigEndpoint'
+  type: string
+- name: 'configFile'
+  type: string
+- name: 'kvrefFile'
+  type: string
+- name: 'k8ServiceConnection'
+  type: string
+- name: 'k8File'
+  type: string
+- name: 'k8namespace'
+  type: string
+- name: 'registryUri'
+  type: string
+- name: 'environment'
+  type: string
+- name: 'podBinding'
+  type: string
+- name: 'aspNetCoreEnv'
+  type: string
+- name: 'minReplica'
+  type: string
+- name: 'maxReplica'
+  type: string
+- name: 'commonKVrefFile'
+  type: string
+- name: 'stagePrefix'
+
+stages:
+  - stage: '${{ parameters.stagePrefix }}_DeployAppConfig'
+    dependsOn: [Build_DeployImage]
+    jobs:
+      - job: 'DeployAppConfig'
+      - deployment: 'Release_${{parameters.service}}_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release ${{parameters.service}} service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: AzureAppConfiguration.azure-app-configuration-task-push.custom-build-release-task.AzureAppConfigurationPush@3
+                 displayName: 'App Configuration - Upload config'
+                 inputs:
+                   azureSubscription: ${{parameters.serviceConnection}}
+                   AppConfigurationEndpoint: ${{parameters.appConfigEndpoint}}
+                   ConfigurationFile: ${{parameters.configFile}}
+                   Separator: .
+                   Label: ${{parameters.label}} 
+    
+               - task: AzureAppConfiguration.azure-app-configuration-task-push.custom-build-release-task.AzureAppConfigurationPush@3
+                 displayName: 'App Configuration - Upload kvref'
+                 inputs:
+                   azureSubscription: ${{parameters.serviceConnection}}
+                   AppConfigurationEndpoint: ${{parameters.appConfigEndpoint}}
+                   ConfigurationFile: ${{parameters.kvrefFile}}
+                   Separator: .
+                   Label: ${{parameters.label}} 
+                   ContentType: 'application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8'
+    
+               - task: AzureAppConfiguration.azure-app-configuration-task-push.custom-build-release-task.AzureAppConfigurationPush@3
+                 displayName: 'App Configuration - Upload common kvref'
+                 inputs:
+                   azureSubscription: ${{parameters.serviceConnection}}
+                   AppConfigurationEndpoint: ${{parameters.appConfigEndpoint}}
+                   ConfigurationFile: ${{parameters.commonKVrefFile}}
+                   Separator: .
+                   Label: 'Common'
+                   ContentType: 'application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8'
+
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseSerialTaskGroup'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseSerialTaskGroup'
+      - deployment: 'Release_SerialTaskGroup_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release SerialTaskGroup service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''serial-task-group'';''$WORKER_SUBSCRIPTION_KEY''=''SerialTaskGroupKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseParallelTaskGroup'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseParallelTaskGroup'
+      - deployment: 'Release_ParallelTaskGroup_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release ParallelTaskGroup service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''parallel-task-group'';''$WORKER_SUBSCRIPTION_KEY''=''ParallelTaskGroupKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureDataDiskTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureDataDiskTask'
+      - deployment: 'Release_AzureDataDiskTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureDataDiskTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-data-disk-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureDataDiskTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureNicTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureNicTask'
+      - deployment: 'Release_AzureNicTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureNicTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-nic-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureNicTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureVirtualMachineTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureVirtualMachineTask'
+      - deployment: 'Release_AzureVirtualMachineTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureVirtualMachineTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-virtual-machine-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureVirtualMachineTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureVirtualNetworkTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureVirtualNetworkTask'
+      - deployment: 'Release_AzureVirtualNetworkTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureVirtualNetworkTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-virtual-network-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureVirtualNetworkTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureExtensionTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureExtensionTask'
+      - deployment: 'Release_AzureExtensionTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureExtensionTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-extension-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureExtensionTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureNsgTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureNsgTask'
+      - deployment: 'Release_AzureNsgTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureNsgTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-nsg-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureNsgTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureMachinePowerTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureMachinePowerTask'
+      - deployment: 'Release_AzureMachinePowerTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureMachinePowerTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-machine-power-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureMachinePowerTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureUdrTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureUdrTask'
+      - deployment: 'Release_AzureUdrTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureUdrTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-udr-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureUdrTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureSpokePeeringTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureSpokePeeringTask'
+      - deployment: 'Release_AzureSpokePeeringTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureSpokePeeringTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-spoke-peering-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureSpokePeeringTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureResourceGroupTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureResourceGroupTask'
+      - deployment: 'Release_AzureResourceGroupTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureResourceGroupTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-resource-group-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureResourceGroupTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureWorkspaceTaskGroup'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureWorkspaceTaskGroup'
+      - deployment: 'Release_AzureWorkspaceTaskGroup_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureWorkspaceTaskGroup service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-workspace-task-group'';''$WORKER_SUBSCRIPTION_KEY''=''AzureWorkspaceTaskGroupKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzurePublicAddressTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzurePublicAddressTask'
+      - deployment: 'Release_AzurePublicAddressTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzurePublicAddressTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-public-address-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzurePublicAddressTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureDNSZoneTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureDNSZoneTask'
+      - deployment: 'Release_AzureDNSZoneTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureDNSZoneTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-dns-task-group'';''$WORKER_SUBSCRIPTION_KEY''=''AzureDNSZoneTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+    
+  - stage: '${{ parameters.stagePrefix }}_DeployReleaseAzureVirtualMachineSnapshotTask'
+    dependsOn: ['${{ parameters.stagePrefix }}_DeployAppConfig']
+    jobs:
+      - job: 'DeployReleaseAzureVirtualMachineSnapshotTask'
+      - deployment: 'Release_AzureVirtualMachineSnapshotTask_${{ parameters.env }}_${{ parameters.deploylocation}}'
+        displayName: 'Release AzureVirtualMachineSnapshotTask service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+        environment: '${{ parameters.devOpsEnv }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: PowerShell@2
+                 displayName: 'PowerShell k8 Replacement Script'
+                 inputs:
+                  targetType: filePath
+                  filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+                  arguments: '''${{parameters.k8File}}'' @{''$WORKER_NAME''=''azure-virtual-machine-snapshot-task'';''$WORKER_SUBSCRIPTION_KEY''=''AzureVirtualMachineSnapshotTaskKey'';''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+    
+               - task: Kubernetes@0
+                 displayName: 'kubectl apply'
+                 inputs:
+                  kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+                  namespace: ${{parameters.k8namespace}}
+                  command: apply
+                  useConfigurationFile: true
+                  configuration: ${{parameters.k8File}} 
+

@@ -1,0 +1,263 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+name: Rolling_AzureFunctions_$(Date:yyMMdd)$(Rev:.r)
+
+pr: none
+
+trigger: none
+
+schedules:
+- cron: "0 */5 * * *"
+  displayName: "On code change - Run Every 5 hours Rolling build"
+  branches:
+    include:
+      - master
+      - main
+
+stages:
+  - stage: Build_Publish_Azure_Functions
+    dependsOn: []
+    jobs:
+      - job:
+        displayName: "Build And Publish"
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+        - task: NuGetToolInstaller@1
+          displayName: 'Install NuGet >=6.3.0-0'
+          inputs:
+            versionSpec: '>=6.3.0-0'
+            checkLatest: true
+        - task: NuGetCommand@2
+          displayName: 'Nuget Restore'
+          inputs:
+            command: "restore"
+            restoreSolution: "**/Microsoft.MyWorkspace.AzureFunctions/*.sln"
+            feedsToUse: "config"
+            noCache: true
+        - task: DotNetCoreCLI@2
+          displayName: 'Build Projects'
+          inputs:
+            command: 'build'
+            projects: 'Microsoft.MyWorkspace.AzureFunctions/**/*.csproj'
+            arguments: '--configuration Release'
+        - task: DotNetCoreCLI@2
+          displayName: 'Publish Artifacts'
+          inputs:
+            command: 'publish'
+            publishWebProjects: false
+            projects: 'Microsoft.MyWorkspace.AzureFunctions/**/*.csproj'
+            arguments: '--configuration Release -o $(Build.ArtifactStagingDirectory)'
+            zipAfterPublish: true
+            modifyOutputPath: true
+        - task: CopyFiles@2
+          inputs:
+            SourceFolder: 'Microsoft.MyWorkspace.AzureFunctions/Deploy'
+            Contents: '**'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)/Deploy'
+        - task: CopyFiles@2
+          displayName: 'Copy common configuration files to build output'
+          inputs:
+            SourceFolder: '$(Build.SourcesDirectory)/.config/Common-configs'
+            Contents: |
+              common-kvref-dev-eastus.json
+              common-kvref-prod-eastus.json
+            TargetFolder: '$(build.artifactstagingdirectory)/Deploy/Configs'
+        - task: PublishBuildArtifacts@1
+          displayName: 'Copy Publish Artifacts'
+          inputs:
+            PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+            ArtifactName: 'drop'
+            publishLocation: 'Container'    
+        - task: PowerShell@2
+          displayName: List Files Post Publish
+          inputs:
+            targetType: inline
+            script: Get-ChildItem    
+  - stage: NonProd_TagBranch
+    dependsOn: [Build_Publish_Azure_Functions]
+    jobs:
+      - template: ../templates/tag-branch.yml
+        parameters: 
+                    tag_build: '$(Rev:.r)'
+                    tag_msg: 'MyWorkspace.AzureFunctions $(Date:yyMMdd)$(Rev:.r)'
+  - stage: NonProd_EastUS_DeployLogAuditFunction
+    dependsOn: [NonProd_TagBranch]
+    jobs:
+      - template: ../templates/deploy-azure-function.yml
+        parameters:
+            env: 'dev' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Dev'
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)' 
+            service: 'LogAuditFunction'
+            label: 'ShutdownFunction'
+            commonlabel: 'Common'
+            appConfigEndpoint: 'https://appcs-mw-dev-eus-002.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-dev.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-kvref-dev-eastus.json'
+            commonkvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/common-kvref-dev-eastus.json'
+            appName: 'func-mw-dev-eus-logaudit'
+            packageName: '$(Build.ArtifactStagingDirectory)/../drop/Microsoft.MyWorkspace.LoggerFunctions.zip'    
+  - stage: Prod_EastUS_DeployLogAuditFunction
+    dependsOn: [NonProd_EastUS_DeployLogAuditFunction]
+    jobs:
+      - template: ../templates/deploy-azure-function.yml
+        parameters:
+            env: 'prod' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Prod'
+            serviceconnection: 'MyWorkspace Prod' 
+            service: 'LogAuditFunction'
+            label: 'ShutdownFunction'
+            commonlabel: 'Common'
+            appConfigEndpoint: 'https://appcs-mw-prod-eus-001.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-prod.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-kvref-prod-eastus2.json'
+            commonkvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/common-kvref-prod-eastus.json'
+            appName: 'func-mw-prod-eus-logaudit'
+            packageName: '$(Build.ArtifactStagingDirectory)/../drop/Microsoft.MyWorkspace.LoggerFunctions.zip'
+  - stage: NonProd_EastUS_DeployBatchjobtriggerFunction
+    dependsOn: [NonProd_TagBranch]
+    jobs:
+      - template: ../templates/deploy-azure-function.yml
+        parameters:
+            env: 'dev' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Dev'
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)' 
+            service: 'Batchjobtrigger'
+            label: 'ShutdownFunction'
+            commonlabel: 'Common'
+            appConfigEndpoint: 'https://appcs-mw-dev-eus-002.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-dev.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-kvref-dev-eastus.json'
+            commonkvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/common-kvref-dev-eastus.json'
+            appName: 'func-mw-dev-batchjobtrigger'
+            packageName: '$(Build.ArtifactStagingDirectory)/../drop/Microsoft.MyWorkspace.BatchJobTrigger.zip'    
+  - stage: Prod_EastUS_DeployBatchjobtriggerFunction
+    dependsOn: [NonProd_EastUS_DeployBatchjobtriggerFunction]
+    jobs:
+      - template: ../templates/deploy-azure-function.yml
+        parameters:
+            env: 'prod' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Prod'
+            serviceconnection: 'MyWorkspace Prod' 
+            service: 'Batchjobtrigger'
+            label: 'ShutdownFunction'
+            commonlabel: 'Common'
+            appConfigEndpoint: 'https://appcs-mw-prod-eus-001.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-prod.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-kvref-prod-eastus2.json'
+            commonkvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/common-kvref-prod-eastus.json'
+            appName: 'func-mw-prod-batchjobtrigger'
+            packageName: '$(Build.ArtifactStagingDirectory)/../drop/Microsoft.MyWorkspace.BatchJobTrigger.zip'
+  - stage: NonProd_EastUS_DeployEmailSenderFunction
+    dependsOn: [NonProd_TagBranch]
+    jobs:
+      - template: ../templates/deploy-azure-function.yml
+        parameters:
+            env: 'dev' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Dev'
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)' 
+            service: 'EmailSenderFunction'
+            label: 'ShutdownFunction'
+            commonlabel: 'Common'
+            appConfigEndpoint: 'https://appcs-mw-dev-eus-002.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-dev.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-kvref-dev-eastus.json'
+            commonkvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/common-kvref-dev-eastus.json'
+            appName: 'func-mw-dev-sendemail'
+            packageName: '$(Build.ArtifactStagingDirectory)/../drop/Microsoft.MyWorkspace.EmailSenderFunc.zip'    
+  - stage: Prod_EastUS_DeployEmailSenderFunction
+    dependsOn: [NonProd_EastUS_DeployEmailSenderFunction]
+    jobs:
+      - template: ../templates/deploy-azure-function.yml
+        parameters:
+            env: 'prod' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Prod'
+            serviceconnection: 'MyWorkspace Prod' 
+            service: 'EmailSenderFunction'
+            label: 'ShutdownFunction'
+            commonlabel: 'Common'
+            appConfigEndpoint: 'https://appcs-mw-prod-eus-001.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-prod.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-kvref-prod-eastus2.json'
+            commonkvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/common-kvref-prod-eastus.json'
+            appName: 'func-emailsend-mw-prod-eus-001'
+            packageName: '$(Build.ArtifactStagingDirectory)/../drop/Microsoft.MyWorkspace.EmailSenderFunc.zip'
+  - stage: NonProd_EastUS_DeployShutdownFunction
+    dependsOn: [NonProd_TagBranch]
+    jobs:
+      - template: ../templates/deploy-azure-function.yml
+        parameters:
+            env: 'dev' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Dev'
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)' 
+            service: 'ShutdownFunction'
+            label: 'ShutdownFunction'
+            commonlabel: 'Common'
+            appConfigEndpoint: 'https://appcs-mw-dev-eus-002.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-dev.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-kvref-dev-eastus.json'
+            commonkvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/common-kvref-dev-eastus.json'
+            appName: 'func-mw-dev-cm-shutdown'
+            packageName: '$(Build.ArtifactStagingDirectory)/../drop/Microsoft.MyWorkspace.ShutdownFunctions.zip'    
+  - stage: Prod_EastUS_DeployShutdownFunction
+    dependsOn: [NonProd_EastUS_DeployShutdownFunction]
+    jobs:
+      - template: ../templates/deploy-azure-function.yml
+        parameters:
+            env: 'prod' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Prod'
+            serviceconnection: 'MyWorkspace Prod' 
+            service: 'ShutdownFunction'
+            label: 'ShutdownFunction'
+            commonlabel: 'Common'
+            appConfigEndpoint: 'https://appcs-mw-prod-eus-001.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-prod.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-kvref-prod-eastus2.json'
+            commonkvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/common-kvref-prod-eastus.json'
+            appName: 'func-shutdown-mw-prod-eus-001'
+            packageName: '$(Build.ArtifactStagingDirectory)/../drop/Microsoft.MyWorkspace.ShutdownFunctions.zip'
+  - stage: NonProd_EastUS_DeployMimsNotificationsFunction
+    dependsOn: [NonProd_TagBranch]
+    jobs:
+      - template: ../templates/deploy-azure-function.yml
+        parameters:
+            env: 'dev' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Dev'
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)' 
+            service: 'MimsNotificationsFunction'
+            label: 'SchedulerService'
+            commonlabel: 'Common'
+            appConfigEndpoint: 'https://appcs-mw-dev-eus-002.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-dev.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-kvref-dev-eastus.json'
+            commonkvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/common-kvref-dev-eastus.json'
+            appName: 'func-mw-dev-mimsnotifications'
+            packageName: '$(Build.ArtifactStagingDirectory)/../drop/Microsoft.MyWorkspace.MimsNotifications.zip'    
+  - stage: Prod_EastUS_DeployMimsNotificationsFunction
+    dependsOn: [NonProd_EastUS_DeployMimsNotificationsFunction]
+    jobs:
+      - template: ../templates/deploy-azure-function.yml
+        parameters:
+            env: 'prod' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Prod'
+            serviceconnection: 'MyWorkspace Prod' 
+            service: 'MimsNotificationsFunction'
+            label: 'SchedulerService'
+            commonlabel: 'Common'
+            appConfigEndpoint: 'https://appcs-mw-prod-eus-001.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-prod.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/config-kvref-prod-eastus2.json'
+            commonkvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Deploy/Configs/common-kvref-prod-eastus.json'
+            appName: 'func-mw-prod-mimsnotifications'
+            packageName: '$(Build.ArtifactStagingDirectory)/../drop/Microsoft.MyWorkspace.MimsNotifications.zip'

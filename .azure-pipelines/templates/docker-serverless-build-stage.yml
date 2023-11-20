@@ -1,0 +1,75 @@
+parameters:
+  - name: solution
+    type: string
+  - name: project
+    type: string
+jobs:
+      - job: BuildRelease
+        displayName: 'Build and Deploy Image'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: DotNetCoreCLI@2
+            displayName: 'NuGet restore'
+            inputs:
+              command: 'restore'
+              projects: '${{ parameters.solution }}/${{ parameters.project }}'
+              feedsToUse: 'config'
+              nugetConfigPath: 'nuget.config'
+              verbosityRestore: 'Normal'
+          - task: DotNetCoreCLI@2
+            displayName: Build
+            inputs:
+              command: build
+              projects: '${{ parameters.solution }}/${{ parameters.project }}'
+              arguments: '--configuration Release' 
+              feedsToUse: 'config'
+              nugetConfigPath: 'nuget.config'
+          - task: DotNetCoreCLI@2
+            displayName: .NET Publish
+            inputs:
+              command: 'publish'
+              publishWebProjects: false
+              projects: '${{ parameters.solution }}/${{ parameters.project }}'
+              arguments: '-o $(Build.ArtifactStagingDirectory)/Output --configuration Release ${{ variables.publishFlag }}'
+              zipAfterPublish: false
+              modifyOutputPath: true
+              noCache: false
+          - task: CopyFiles@2
+            displayName: 'Copy configuration files to build output'
+            inputs:
+              SourceFolder: '${{ parameters.solution }}/Deploy/Configs'
+              Contents: |
+                config-dev.json
+                config-dev-eastus.json
+                config-dev-southcentralus.json
+                config-kvref-dev-eastus.json
+                config-kvref-dev-southcentralus.json
+                config-prod.json
+                config-prod-westus2.json
+                config-prod-eastus2.json
+                config-kvref-prod.json
+                config-kvref-prod-eastus2.json
+                config-kvref-prod-westus3.json
+              TargetFolder: '$(build.artifactstagingdirectory)/Configs'
+          - task: CopyFiles@2
+            displayName: 'Copy common configuration files to build output'
+            inputs:
+              SourceFolder: '$(Build.SourcesDirectory)/.config/Common-configs'
+              Contents: |
+                common-kvref-dev-eastus.json
+                common-kvref-prod-eastus.json
+              TargetFolder: '$(build.artifactstagingdirectory)/Configs'
+          - task: CopyFiles@2
+            displayName: 'Copy Dockerfile to build output'
+            inputs:
+              SourceFolder: '${{ parameters.solution }}/${{ parameters.project }}'
+              Contents: |
+                *Dockerfile
+              TargetFolder: '$(build.artifactstagingdirectory)/Configs'
+          - task: PublishBuildArtifacts@1
+            displayName: Publish Artifact
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'drop'
+              publishLocation: 'Container'

@@ -1,0 +1,250 @@
+{
+  "name": "myworkspace.frontend",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@azure/msal-browser": "^2.33.0",
+    "@azure/msal-react": "^1.5.3",
+    "@coherence-design-system/controls": "^4.16.0",
+    "@coherence-design-system/notification-center": "^1.3.1",
+    "@coherence-design-system/rich-text-editor": "^1.1.3",
+    "@coherence-design-system/styles": "^5.1.0",
+    "@fluentui/react": "^8.105.5",
+    "@fluentui/react-charting": "^5.15.2",
+    "@fluentui/react-hooks": "^8.6.16",
+    "@fluentui/react-icons-mdl2": "^1.3.31",
+    "@fluentui/utilities": "^8.13.6",
+    "@microsoft/applicationinsights-clickanalytics-js": "^2.8.10",
+    "@microsoft/applicationinsights-web": "^2.8.10",
+    "@microsoft/microsoft-graph-types": "^2.26.0",
+    "@microsoft/oteljs": "4.8.15",
+    "@microsoft/oteljs-1ds": "4.8.15",
+    "@microsoft/signalr": "^7.0.2",
+    "@reduxjs/toolkit": "^1.9.2",
+    "@types/node": "^17.0.45",
+    "@types/react": "^17.0.53",
+    "@types/react-dom": "^17.0.18",
+    "@types/uuid": "^8.3.4",
+    "adaptivecards-react": "^1.1.1",
+    "axios": "^0.26.1",
+    "buffer": "^6.0.3",
+    "clsx": "^1.2.1",
+    "d3": "^7.8.2",
+    "dayjs": "^1.11.7",
+    "env-cmd": "^10.1.0",
+    "es5-ext": "0.10.53",
+    "eslint-import-resolver-typescript": "^3.5.3",
+    "json-2-csv": "^3.18.0",
+    "lodash": "^4.17.21",
+    "msw": "^1.2.2",
+    "muuri": "^0.9.5",
+    "odata-query": "^7.0.4",
+    "oidc-client": "^1.11.5",
+    "preval.macro": "^5.0.0",
+    "react": "^17.0.0",
+    "react-dom": "^17.0.2",
+    "react-error-boundary": "^4.0.4",
+    "react-helmet": "^6.1.0",
+    "react-json-view": "^1.21.3",
+    "react-redux": "^7.2.9",
+    "react-router": "^5.2.0",
+    "react-router-dom": "^5.3.4",
+    "react-scripts": "^5.0.1",
+    "react-toastify": "^8.2.0",
+    "reselect": "^4.1.7",
+    "ruuri": "^1.0.0",
+    "sanitize-html": "^2.9.0",
+    "url-parse": "^1.5.10",
+    "uuid": "^8.3.2",
+    "web-vitals": "^3.3.2",
+    "workbox-core": "^6.5.1",
+    "workbox-expiration": "^6.5.1",
+    "workbox-precaching": "^6.5.1",
+    "workbox-routing": "^6.5.1",
+    "workbox-strategies": "^6.5.1"
+  },
+  "devDependencies": {
+    "@svgr/webpack": "^6.5.1",
+    "@testing-library/jest-dom": "^5.16.5",
+    "@testing-library/react": "^12.1.5",
+    "@testing-library/user-event": "^14.4.3",
+    "@types/d3": "^7.4.0",
+    "@types/jest": "^27.5.2",
+    "@types/lodash": "^4.14.191",
+    "@types/lodash-es": "^4.17.6",
+    "@types/node": "^17.0.45",
+    "@types/preval.macro": "^3.0.0",
+    "@types/react": "^17.0.53",
+    "@types/react-dom": "^17.0.18",
+    "@types/react-helmet": "^6.1.6",
+    "@types/react-redux": "^7.1.25",
+    "@types/react-router-dom": "^5.3.3",
+    "@types/react-test-renderer": "^17.0.2",
+    "@types/redux-mock-store": "^1.0.3",
+    "@types/sanitize-html": "^2.8.0",
+    "ajv": "^8.12.0",
+    "cross-env": "^7.0.3",
+    "eslint": "^8.33.0",
+    "eslint-config-prettier": "^8.6.0",
+    "eslint-config-react-app": "^7.0.1",
+    "eslint-plugin-flowtype": "^8.0.3",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-jest": "^27.2.1",
+    "eslint-plugin-jest-dom": "^5.0.1",
+    "eslint-plugin-jsx-a11y": "^6.7.1",
+    "eslint-plugin-react": "^7.32.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-redux": "^4.0.0",
+    "eslint-plugin-testing-library": "^5.11.0",
+    "husky": "^8.0.3",
+    "jest": "^27.5.1",
+    "jest-junit": "^13.2.0",
+    "lint-staged": "^13.1.1",
+    "nan": "^2.17.0",
+    "prettier": "^2.8.4",
+    "react-error-overlay": "6.0.10",
+    "react-test-renderer": "^17.0.2",
+    "redux-mock-store": "^1.5.4",
+    "source-map-explorer": "^2.5.3",
+    "ts-jest": "^27.1.5",
+    "typescript": "^4.9.5",
+    "webpack-bundle-analyzer": "^4.9.0"
+  },
+  "overrides": {
+    "@svgr/webpack": "$@svgr/webpack",
+    "d3-color": "3.1.0"
+  },
+  "scripts": {
+    "start:local": "rimraf ./build && env-cmd -f .env.development.local react-scripts start",
+    "start:dev": "rimraf ./build && env-cmd -f .env.development react-scripts start",
+    "build": "react-scripts build --stats",
+    "build:development": "env-cmd -f .env.development react-scripts build --stats",
+    "build:production": "env-cmd -f .env.production react-scripts build --stats",
+    "webpack:analyze": "webpack-bundle-analyzer ./build/bundle-stats.json ./build -m json",
+    "test": "env-cmd -f .env.development.local jest",
+    "test:coverage": "env-cmd -f .env.development.local jest --coverage",
+    "test:ci": "env-cmd -f .env.development.local jest --coverage",
+    "eject": "react-scripts eject",
+    "lint": "eslint ./src/ --fix",
+    "lint:check": "eslint ./src",
+    "lint:error": "eslint ./src --fix --quiet",
+    "prettier": "prettier --write ./src",
+    "prettier:check": "prettier --check ./src",
+    "analyze": "source-map-explorer 'build/static/js/*.js'",
+    "analyze:json": "source-map-explorer 'build/static/js/*.js' --json bundleSizes.json",
+    "analyze:gzip": "source-map-explorer --gzip 'build/static/js/*.js'",
+    "refreshVSToken": "vsts-npm-auth -c ./.npmrc",
+    "refreshVSToken:force": "vsts-npm-auth -c ./.npmrc -F",
+    "refreshVSToken:new": "vsts-npm-auth -c ./.npmrc -r -f -v normal",
+    "setupMSW": "npx msw init public/ --save",
+    "audit": "npm audit --registry https://registry.npmjs.org",
+    "audit:fix": "npm audit fix --registry https://registry.npmjs.org"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "resolutions": {
+    "react-error-overlay": "6.0.10"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": "eslint --fix",
+    "*.{js,jsx,ts,tsx,css,md}": "prettier --write"
+  },
+  "jest": {
+    "globals": {
+      "crypto": "require('crypto')",
+      "ts-jest": {
+        "isolatedModules": true
+      }
+    },
+    "testTimeout": 45000,
+    "reporters": [
+      "default",
+      "jest-junit"
+    ],
+    "collectCoverageFrom": [
+      "<rootDir>/src/store/actions/editableWorkspaceActions/*.ts",
+      "<rootDir>/src/store/reducers/editableWorkspaceReducer.ts",
+      "<rootDir>/src/store/validators/*.{ts,tsx}",
+      "<rootDir>/src/components/NewWorkspace/**/*.{ts,tsx}"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 60,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      },
+      "./src/store/actions/editableWorkspaceActions/": {
+        "branches": 60,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      },
+      "./src/store/validators/": {
+        "branches": 60,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      },
+      "./src/components/NewWorkspace/": {
+        "branches": 0,
+        "functions": 0,
+        "lines": 0,
+        "statements": 0
+      }
+    },
+    "testEnvironment": "jsdom",
+    "transform": {
+      "^.+\\.(ts|tsx)?$": "ts-jest"
+    },
+    "testPathIgnorePatterns": [
+      "<rootDir>/node_modules/",
+      "<rootDir>/src/__tests__/data",
+      "<rootDir>/src/__tests__/utils",
+      "<rootDir>/src/authentication/"
+    ],
+    "unmockedModulePathPatterns": [
+      "<rootDir>/node_modules/"
+    ],
+    "transformIgnorePatterns": [
+      "/node_modules/(?!office-ui-fabric-react)/",
+      "/node_modules/(?!@cseo)/",
+      "/node_modules/(?!@uifabric)/",
+      "/node_modules/(?!@m365-admin)/",
+      "/node_modules/(?!d3|d3-array)/"
+    ],
+    "moduleDirectories": [
+      "node_modules",
+      "<rootDir>",
+      "src"
+    ],
+    "moduleNameMapper": {
+      "office-ui-fabric-react/lib/(.*)$": "office-ui-fabric-react/lib-commonjs/$1",
+      "@coherence-design-system/styles/lib/(.*)$": "@coherence-design-system/styles/lib-commonjs/$1",
+      "@coherence-design-system/controls/lib/(.*)$": "@coherence-design-system/controls/lib-commonjs/$1",
+      "@fluentui/react/lib/(.*)$": "@fluentui/react/lib-commonjs/$1",
+      "@uifabric/fluent-theme/lib/(.*)$": "@uifabric/fluent-theme/lib-commonjs/$1",
+      "@m365-admin/admin-controls/lib/(.*)$": "@m365-admin/admin-controls/lib-commonjs/$1",
+      "@m365-admin/customizations/lib/(.*)$": "@m365-admin/customizations/lib-commonjs/$1",
+      "applicationinsights-js": "<rootDir>/__mocks__/fileMock.js",
+      "d3": "d3/dist/d3.min.js",
+      "d3-array": "d3-array/build/d3-array.min.js",
+      "swiper": "swiper/swiper-bundle.min.js",
+      "\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$": "<rootDir>/__mocks__/fileMock.js",
+      "\\.(css|less|scss)$": "<rootDir>/__mocks__/fileMock.js"
+    }
+  },
+  "msw": {
+    "workerDirectory": "public"
+  }
+}

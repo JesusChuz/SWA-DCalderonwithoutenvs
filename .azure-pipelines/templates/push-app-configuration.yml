@@ -1,0 +1,41 @@
+parameters:
+  - name: environment
+    type: string
+    default: false
+  - name: serviceconnection
+    type: string
+    default: false
+  - name: appconfigurl
+    type: string
+    default: false
+  - name: folderpath
+    type: string
+    default: false
+  - name: configfilename
+    type: string
+    default: false
+  - name: contenttype
+    type: string
+    default: false
+
+jobs:
+- deployment: Push_Configuration
+  displayName: 'Pushing Configuration to ${{ parameters.environment }}'
+  environment: '${{ parameters.environment }}'
+  strategy:
+   runOnce:
+    deploy:
+     steps:
+       - task: DownloadBuildArtifacts@0
+         inputs:
+            buildType: 'current'
+            artifactName: 'drop'
+            downloadPath: '$(System.ArtifactsDirectory)'
+       - task: AzureAppConfigurationPush@3
+         inputs:
+            azureSubscription: '${{ parameters.serviceconnection }}'
+            AppConfigurationEndpoint: '${{ parameters.appconfigurl }}'
+            ConfigurationFile: '$(System.ArtifactsDirectory)/drop/${{ parameters.folderpath }}/${{ parameters.configfilename }}'
+            Separator: '.'
+            ContentType: '${{ parameters.contenttype }}'
+            Strict: false

@@ -1,0 +1,29 @@
+# Copyright (c) Microsoft. All rights reserved.
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+  
+variables:
+  - name: solution
+    value: 'Microsoft.MyWorkspace.GatewayAggregator'
+  - name: buildPlatform
+    value: 'Any CPU'
+  - name: buildConfiguration
+    value: 'Release'
+
+
+name: PR_$(Date:yyMMdd)$(Rev:.r)
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    jobs:
+      - template: ../templates/codequality-stage.yml
+        parameters:
+          solution: '$(solution)'
+          projectFolder: ['Microsoft.MyWorkspace.GatewayAggregator']
+          buildPlatform: '$(buildPlatform)'
+          buildConfiguration: '$(buildConfiguration)'
+      - template: ../templates/react-tests-stage.yml
+        parameters:
+          reactEnvironment: 'development'

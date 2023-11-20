@@ -1,0 +1,23 @@
+# Copyright (c) Microsoft. All rights reserved.
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+  
+variables:
+  - name: solution
+    value: 'Microsoft.MyWorkspace.E2E'
+  - name: buildPlatform
+    value: 'Any CPU'
+  - name: buildConfiguration
+    value: 'Release'
+
+
+name: PR_$(Date:yyMMdd)$(Rev:.r)
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    jobs:
+      - template: ../templates/e2e-codequality-stage.yml
+        parameters:
+          reactEnvironment: 'development'

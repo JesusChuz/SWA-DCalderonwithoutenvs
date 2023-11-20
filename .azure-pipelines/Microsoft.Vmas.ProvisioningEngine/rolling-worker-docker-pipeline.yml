@@ -1,0 +1,91 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+name: Rolling_ResourceProvisioningService_$(Date:yyMMdd)$(Rev:.r)
+
+pr: none
+
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+schedules:
+- cron: "0 */5 * * *"
+  displayName: "On code change - Run Every 5 hours Rolling build"
+  branches:
+    include:
+      - main
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    dependsOn: []
+    jobs:
+      - template: ../templates/codequality-stage.yml
+        parameters: 
+            solution: 'Microsoft.Vmas.ProvisioningEngine'
+            projectFolder: ['Microsoft.Vmas.ProvisioningEngine.Worker']
+            buildPlatform: 'Any CPU'
+            buildConfiguration: 'Release'
+  - stage: Build_DeployImage
+    dependsOn: [NonProd_CheckCodeQuality]
+    jobs:
+      - template: ../templates/docker-build-stage-common.yml
+        parameters:
+            solution: 'Microsoft.Vmas.ProvisioningEngine'
+            project: 'Microsoft.Vmas.ProvisioningEngine.Worker'
+            devContainerRegistry: 'spn-crm-mw-dev'
+            prodContainerRegistry: 'spn-crm-mw-prod'
+            k8Path: './.k8s/common/worker_k8s.yml'
+            repo: 'worker'
+  - stage: NonProd_TagBranch
+    dependsOn: [NonProd_CheckCodeQuality,Build_DeployImage]
+    jobs:
+      - template: ../templates/tag-branch.yml
+        parameters: 
+                    tag_build: '$(Rev:.r)'
+                    tag_msg: 'Vmas.ProvisioningEngine $(Date:yyMMdd)$(Rev:.r)'
+  - template: ../templates/deploy-release-worker.yml
+    parameters:
+        env: 'dev'
+        deploylocation: 'EUS'
+        devOpsEnv: 'MW-Dev'
+        serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)'
+        service: 'ProvisioningEngine'
+        label: 'ProvisioningEngine'
+        appConfigEndpoint: 'https://appcs-mw-dev-eus-002.azconfig.io'
+        configFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-dev.json'
+        kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-kvref-dev-eastus.json'
+        k8ServiceConnection: 'spn-aks-mw-dev-eus'
+        k8File: '$(Build.ArtifactStagingDirectory)/../drop/common/worker_k8s.yml'
+        k8namespace: 'dev'
+        registryUri: 'crmwdevscus.azurecr.io'
+        environment: 'development'
+        podBinding: 'pod-id-aks-mw-dev-eus-001'
+        aspNetCoreEnv: 'Development'
+        minReplica: '3'
+        maxReplica: '16'
+        commonKVrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/common-kvref-dev-eastus.json'
+        stagePrefix: 'NonProd'
+
+  - template: ../templates/deploy-release-worker.yml
+    parameters:
+        env: 'prod'
+        deploylocation: 'EUS'
+        devOpsEnv: 'MW-Prod'
+        serviceconnection: 'MyWorkspace Prod'
+        service: 'ProvisioningEngine'
+        label: 'ProvisioningEngine'
+        appConfigEndpoint: 'https://appcs-mw-prod-eus-001.azconfig.io'
+        configFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-prod.json'
+        kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-kvref-prod-eastus2.json'
+        k8ServiceConnection: 'spn-aks-mw-prod-eus-001'
+        k8File: '$(Build.ArtifactStagingDirectory)/../drop/common/worker_k8s.yml'
+        commonKVrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/common-kvref-prod-eastus.json'
+        k8namespace: 'prod'
+        registryUri: 'crmwprodshared.azurecr.io'
+        environment: 'production'
+        podBinding: 'pod-id-aks-mw-prod-eus-001'
+        aspNetCoreEnv: 'Production'
+        minReplica: '8'
+        maxReplica: '32'
+        stagePrefix: "Prod"

@@ -1,0 +1,100 @@
+parameters:
+  - name: solution
+    type: string
+  - name: buildPlatform
+    type: string
+    default: 'Any CPU'
+  - name: buildConfiguration
+    type: string
+    default: 'Release'
+  - name: projectFolder
+    type: object
+  - name: testSuiteSuffix
+    type: string
+    default: '.UnitTests'
+  - name: runTests
+    type: boolean
+    default: true
+
+
+jobs:
+- ${{ each projectFolder in parameters.projectFolder }}:
+  - job:
+    displayName: "NonProd CredScan - ${{ projectFolder }}"
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - task: CredScan@2
+      inputs:
+        toolMajorVersion: 'V2'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      inputs:
+        scanType: LogOnly
+        failOnAlert: true
+        sourceScanPath: '${{ parameters.solution }}/${{ projectFolder }}'
+    - task: PostAnalysis@1
+      inputs:
+        AllTools: false
+        APIScan: false
+        BinSkim: false
+        CodesignValidation: false
+        CredScan: true
+        FortifySCA: false
+        FxCop: false
+        ModernCop: false
+        PoliCheck: false
+        RoslynAnalyzers: false
+        SDLNativeRules: false
+        Semmle: false
+        TSLint: false
+        ToolLogsNotFoundAction: 'Standard'
+  - job:
+    condition: eq('${{ parameters.runTests }}', 'true')
+    displayName: "NonProd Validate Tests - ${{ projectFolder }}"
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - task: PowerShell@2
+      retryCountOnTaskFailure: "3"
+      displayName: "Run Azure CosmosDB Emulator"
+      inputs:
+        targetType: 'inline'
+        script: |
+          Write-Host "Starting CosmosDB Emulator"
+          Import-Module "C:/Program Files/Azure Cosmos DB Emulator/PSModules/Microsoft.Azure.CosmosDB.Emulator"
+          Start-CosmosDbEmulator
+    - task: NuGetToolInstaller@1
+    - task: NuGetCommand@2
+      inputs:
+        command: 'restore'
+        restoreSolution: "**/${{ parameters.solution }}/*.sln"
+        feedsToUse: 'config'
+        noCache: 'true'
+#    - task: UseDotNet@2
+#      displayName: 'Use .NET Core sdk 5'
+#      inputs:
+#        packageType: 'sdk'
+#        version: '5.x'
+    - task: DotNetCoreCLI@2
+      displayName: Build
+      inputs:
+        command: build
+        projects: '${{ parameters.solution }}/${{ projectFolder }}'
+        arguments: '--configuration $(buildConfiguration)'
+    - task: DotNetCoreCLI@2
+      displayName: Tests
+      env:
+        COSMOS_EMULATOR_URI: $(COSMOS_EMULATOR_URI)
+        COSMOS_EMULATOR_KEY: $(COSMOS_EMULATOR_KEY)
+        EmailTemplatesConnectionString: $(EmailTemplatesConnectionString)
+      inputs:
+        command: test
+        projects: '${{ parameters.solution }}/${{ projectFolder }}${{ parameters.testSuiteSuffix }}'
+        arguments: '--configuration $(buildConfiguration) --collect:"Code Coverage" --settings:$(Build.SourcesDirectory)\codecoverage.runsettings'
+        publishTestResults: true
+    - task: PublishTestResults@2
+      displayName: "Publish Test Results"
+      inputs:
+        testRunner: VSTest
+        testResultsFiles: 'D:/a/_temp/*.trx'

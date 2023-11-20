@@ -1,0 +1,47 @@
+import { ResourceState } from './enums/ResourceState';
+import { AzureVirtualMachineDto } from './AzureVirtualMachineDto.types';
+import { AzureVirtualNetworkDto } from './AzureVirtualNetworkDto.types';
+import { AzureNsgDto } from './AzureNsgDto.types';
+import { AzureUdrDto } from './AzureUdrDto.types';
+import { HubNetworkInfoDto } from './HubNetworkInfoDto.types';
+import { AzurePublicAddressDto } from './AzurePublicAddressDto.types';
+import { AzureDNSZoneDto } from './AzureDNSZoneDto.types';
+import { AzureDomainDto } from './AzureDomainDto.types';
+
+export interface AzureWorkspaceDto {
+  ID: string;
+  Name: string;
+  InternalName: string;
+  Description: string;
+  Created?: string;
+  Deployed?: string;
+  Updated?: string;
+  EndRunTime?: string;
+  TemplateID?: string;
+  State: ResourceState;
+  OwnerID: string;
+  SharedOwnerIDs: string[];
+  OwnerEmail: string;
+  SharedOwnerEmails: string[];
+  VirtualMachines: AzureVirtualMachineDto[];
+  VirtualNetworks: AzureVirtualNetworkDto[];
+  Domains: AzureDomainDto[];
+  PublicAddresses: AzurePublicAddressDto[];
+  DNSZone: AzureDNSZoneDto;
+  Nsg: AzureNsgDto;
+  Udr: AzureUdrDto;
+  HubNetworkInfo: HubNetworkInfoDto;
+  SubscriptionID: string;
+  ResourceGroupName: string;
+  Location: string;
+  RegionID: string;
+  SecurityLock: boolean;
+  TimeZone: string;
+  AutoStartTime: string;
+  AutoStopTime: string;
+  DaysOfWeek: string;
+  Geography: string;
+  PrivateMode: boolean;
+  LastJitActivationDateTime?: string;
+  SharedWithSegment: boolean;
+}

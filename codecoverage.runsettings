@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="Code Coverage" uri="datacollector://Microsoft/CodeCoverage/2.0" assemblyQualifiedName="Microsoft.VisualStudio.Coverage.DynamicCoverageDataCollector, Microsoft.VisualStudio.TraceCollector, Version=11.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+        <Configuration>
+          <CodeCoverage>
+            <ModulePaths>
+              <Exclude>
+                <ModulePath>.*unittests.dll</ModulePath>
+                <ModulePath>.*fluentvalidation.dll</ModulePath>
+                <ModulePath>.*moq.dll</ModulePath>
+                <ModulePath>.*common.shared.dll</ModulePath>
+              </Exclude>
+            </ModulePaths>
+            <Sources>
+              <Exclude>
+                <Source>.*\\Program.cs*</Source>
+                <Source>.*\\Startup.cs*</Source>
+                <Source>.*\\ConfigureSwaggerOptions.cs*</Source>
+                <Source>.*\\SwaggerDefaultValues.cs*</Source>
+                <Source>.*\\ErrorController.cs*</Source>
+                <Source>.*\\HealthController.cs*</Source>
+                <Source>.*\\*Dto.cs*</Source>
+              </Exclude>
+            </Sources>
+          </CodeCoverage>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+  <TestRunParameters>
+    <Parameter name="endpoint" value="https://localhost:8081" />
+    <Parameter name="authkey" value="C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==" />
+  </TestRunParameters>
+</RunSettings>

@@ -1,0 +1,32 @@
+parameters:
+- name: 'reactEnvironment'
+  type: string
+- name: 'deploymentToken'
+  type: string
+- name: 'devOpsEnv'
+  type: string
+- name: 'service'
+  type: string
+jobs:
+  
+  - job: 'DeployUI'
+  - deployment: 'Release_${{parameters.service}}_${{ parameters.reactEnvironment }}'
+    displayName: 'Release ${{parameters.service}} service to ${{ parameters.reactEnvironment }}'
+    environment: '${{ parameters.devOpsEnv }}'
+    variables:
+    - name: front_end_build_directory
+      value: '$(Build.ArtifactStagingDirectory)/../${{ parameters.reactEnvironment }}'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - task: AzureStaticWebApp@0
+              inputs:
+                app_location: '/'
+                api_location: ''
+                output_location: '' # Leave this empty
+                skip_app_build: true
+                skip_api_build: true
+                azure_static_web_apps_api_token: ${{ parameters.deploymentToken }}
+                cwd: '$(front_end_build_directory)'
+

@@ -1,0 +1,92 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+name: Rolling_AuthService_$(Date:yyMMdd)$(Rev:.r)
+
+pr: none
+
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+schedules:
+- cron: "0 */5 * * *"
+  displayName: "On code change - Run Every 5 hours Rolling build"
+  branches:
+    include:
+      - main
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    dependsOn: []
+    jobs:
+      - template: ../templates/codequality-stage.yml
+        parameters: 
+          solution: 'Microsoft.MyWorkspace.AuthService'
+          projectFolder: ['Microsoft.MyWorkspace.AuthService.AuthApi','Microsoft.MyWorkspace.AuthService.Models','Microsoft.MyWorkspace.AuthService.Repository','Microsoft.MyWorkspace.AuthService.Services']
+          buildPlatform: 'Any CPU'
+          buildConfiguration: 'Release'
+  - stage: Build_DeployImage
+    dependsOn: [NonProd_CheckCodeQuality]
+    jobs:
+      - template: ../templates/docker-build-stage-common.yml
+        parameters: 
+            solution: 'Microsoft.MyWorkspace.AuthService'
+            project: 'Microsoft.MyWorkspace.AuthService.AuthApi'
+            devContainerRegistry: 'spn-crm-mw-dev'
+            prodContainerRegistry: 'spn-crm-mw-prod'
+            k8Path: './.k8s/common/authservice_k8s.yml'
+            repo: 'authservice'
+  - stage: NonProd_TagBranch
+    dependsOn: [NonProd_CheckCodeQuality,Build_DeployImage]
+    jobs:
+      - template: ../templates/tag-branch.yml
+        parameters: 
+                    tag_build: '$(Rev:.r)'
+                    tag_msg: 'MyWorkspace.AuthService $(Date:yyMMdd)$(Rev:.r)'
+  - stage: NonProd_EastUS2_DeployAuth
+    dependsOn: [NonProd_TagBranch,NonProd_CheckCodeQuality,Build_DeployImage]
+    jobs:
+      - template: ../templates/deploy-release.yml
+        parameters:
+            env: 'dev' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Dev'
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)' 
+            service: 'AuthService'
+            label: 'AuthApi'
+            appConfigEndpoint: 'https://appcs-mw-dev-eus-002.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-dev.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-kvref-dev-eastus.json'
+            k8ServiceConnection: 'spn-aks-mw-dev-eus'
+            k8File: '$(Build.ArtifactStagingDirectory)/../drop/common/authservice_k8s.yml'
+            k8namespace: 'dev'
+            registryUri: 'crmwdevscus.azurecr.io'
+            environment: 'development'
+            podBinding: 'pod-id-aks-mw-dev-eus-001'
+            aspNetCoreEnv: 'Development'
+            minReplica: '3'
+            maxReplica: '8'
+  - stage: Prod_EastUS2_DeployAuth
+    dependsOn: [NonProd_EastUS2_DeployAuth]
+    jobs:
+      - template: ../templates/deploy-release.yml
+        parameters:
+            env: 'prod' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Prod'
+            serviceconnection: 'MyWorkspace Prod' 
+            service: 'AuthService'
+            label: 'AuthApi'
+            appConfigEndpoint: 'https://appcs-mw-prod-eus-001.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-prod.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-kvref-prod-eastus2.json'
+            k8ServiceConnection: 'spn-aks-mw-prod-eus-001'
+            k8File: '$(Build.ArtifactStagingDirectory)/../drop/common/authservice_k8s.yml'
+            k8namespace: 'prod'
+            registryUri: 'crmwprodshared.azurecr.io'
+            environment: 'production'
+            podBinding: 'pod-id-aks-mw-prod-eus-001'
+            aspNetCoreEnv: 'Production'
+            minReplica: '8'
+            maxReplica: '32'

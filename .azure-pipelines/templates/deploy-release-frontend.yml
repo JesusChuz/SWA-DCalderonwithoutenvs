@@ -1,0 +1,99 @@
+parameters:
+- name: 'env'
+  type: string
+- name: 'deploylocation'
+  type: string
+- name: 'devOpsEnv'
+  type: string
+- name: 'serviceConnection'
+  type: string
+- name: 'service'
+  type: string
+- name: 'label'
+  type: string
+- name: 'appConfigEndpoint'
+  type: string
+- name: 'configFile'
+  type: string
+- name: 'kvrefFile'
+  type: string
+- name: 'k8ServiceConnection'
+  type: string
+- name: 'k8File'
+  type: string
+- name: 'k8namespace'
+  type: string
+- name: 'registryUri'
+  type: string
+- name: 'environment'
+  type: string
+- name: 'podBinding'
+  type: string
+- name: 'aspNetCoreEnv'
+  type: string
+- name: 'minReplica'
+  type: string
+- name: 'maxReplica'
+  type: string
+- name: 'k8ingress'
+
+jobs:
+  - job: 'DeployRelease'
+  - deployment: 'Release_${{parameters.service}}_${{ parameters.env }}_${{ parameters.deploylocation}}'
+    displayName: 'Release ${{parameters.service}} service to ${{ parameters.env }} for ${{ parameters.deploylocation}} region'
+    environment: '${{ parameters.devOpsEnv }}'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+           - task: AzureAppConfiguration.azure-app-configuration-task-push.custom-build-release-task.AzureAppConfigurationPush@3
+             displayName: 'App Configuration - Upload config'
+             inputs:
+               azureSubscription: ${{parameters.serviceConnection}}
+               AppConfigurationEndpoint: ${{parameters.appConfigEndpoint}}
+               ConfigurationFile: ${{parameters.configFile}}
+               Separator: .
+               Label: ${{parameters.label}} 
+
+           - task: AzureAppConfiguration.azure-app-configuration-task-push.custom-build-release-task.AzureAppConfigurationPush@3
+             displayName: 'App Configuration - Upload kvref'
+             inputs:
+               azureSubscription: ${{parameters.serviceConnection}}
+               AppConfigurationEndpoint: ${{parameters.appConfigEndpoint}}
+               ConfigurationFile: ${{parameters.kvrefFile}}
+               Separator: .
+               Label: ${{parameters.label}} 
+               ContentType: 'application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8'
+
+           - task: PowerShell@2
+             displayName: 'PowerShell k8 Replacement Script'
+             inputs:
+              targetType: filePath
+              filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+              arguments: '''${{parameters.k8File}}'' @{''$aspNetCoreEnv''=''${{parameters.aspNetCoreEnv}}'';''$podBinding''=''${{parameters.podBinding}}'';''$environment''=''${{parameters.environment}}'';''$minReplica''=''${{parameters.minReplica}}'';''$maxReplica''=''${{parameters.maxReplica}}'';''$registry_uri''=''${{parameters.registryUri}}'';}'
+
+           - task: Kubernetes@0
+             displayName: 'FE K8 | Apply'
+             inputs:
+              kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+              namespace: ${{parameters.k8namespace}}
+              command: apply
+              useConfigurationFile: true
+              configuration: ${{parameters.k8File}} 
+
+           - task: PowerShell@2
+             displayName: 'Replacement | FE Ingress k8'
+             inputs:
+              targetType: filePath
+              filePath: '$(Build.ArtifactStagingDirectory)/../drop/k8ParamReplacement.ps1'
+              arguments: '''${{parameters.k8ingress}}'' @{''$SSL-CERT''="cert-mw-dev-trafficmanager";}'
+
+           - task: Kubernetes@0
+             displayName: 'FE Ingress KB | apply'
+             inputs:
+              kubernetesServiceConnection: ${{parameters.k8ServiceConnection}} 
+              namespace: ${{parameters.k8namespace}}
+              command: apply
+              useConfigurationFile: true
+              configuration: ${{parameters.k8ingress}} 
+

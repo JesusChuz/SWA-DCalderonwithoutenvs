@@ -1,0 +1,31 @@
+# Copyright (c) Microsoft. All rights reserved.
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+  
+variables:
+  - name: solution
+    value: 'Microsoft.MyWorkspace.Diagnostics'
+  - name: buildPlatform
+    value: 'Any CPU'
+  - name: buildConfiguration
+    value: 'Release'
+
+
+name: PR_$(Date:yyMMdd)$(Rev:.r)
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    jobs:
+      - template: ../templates/codequality-stage.yml
+        parameters:
+          solution: '$(solution)'
+          projectFolder:
+            - Microsoft.MyWorkspace.Diagnostics.Api
+            - Microsoft.MyWorkspace.Diagnostics.Data
+            - Microsoft.MyWorkspace.Diagnostics.Models
+            - Microsoft.MyWorkspace.Diagnostics.Service
+            - Microsoft.MyWorkspace.Diagnostics.Worker
+          buildPlatform: '$(buildPlatform)'
+          buildConfiguration: '$(buildConfiguration)'

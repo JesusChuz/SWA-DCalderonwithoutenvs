@@ -1,0 +1,44 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+name: Rolling_BatchJobOrchestratorWorker_$(Date:yyMMdd)$(Rev:.r)
+
+pr: none
+
+trigger: none
+
+schedules:
+- cron: "0 */5 * * *"
+  displayName: "On code change - Run Every 5 hours Rolling build"
+  branches:
+    include:
+      - main
+
+stages:
+  - stage: Build_DeployImage
+    jobs:
+      - template: ../../templates/docker-serverless-build-stage.yml
+        parameters:
+            solution: 'Microsoft.MyWorkspace.Scheduler'
+            project: 'ServerlessServices/Microsoft.MyWorkspace.Scheduler.BatchJob.Orchestrator'
+  - stage: Output_Ansible
+    jobs:
+      - job: 'Copy_Publish'
+        steps:
+        - task: CopyFiles@2
+          inputs:
+              SourceFolder: '$(Build.SourcesDirectory)/.ansible'
+              Contents: '**'
+              TargetFolder: '$(System.ArtifactsDirectory)/ansible'
+        - task: PublishBuildArtifacts@1
+          displayName: Publish Artifact
+          inputs:
+              PathtoPublish: '$(System.ArtifactsDirectory)'
+              ArtifactName: 'drop'
+              publishLocation: 'Container'
+  - stage: NonProd_TagBranch
+    dependsOn: [Build_DeployImage]
+    jobs:
+      - template: ../../templates/tag-branch.yml
+        parameters: 
+                    tag_build: '$(Rev:.r)'
+                    tag_msg: 'BatchJobOrchestrator.Worker $(Date:yyMMdd)$(Rev:.r)'

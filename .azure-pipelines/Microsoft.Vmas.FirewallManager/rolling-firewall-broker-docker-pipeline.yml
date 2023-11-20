@@ -1,0 +1,94 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+name: Rolling_FirewallBroker_$(Date:yyMMdd)$(Rev:.r)
+
+pr: none
+
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+schedules:
+- cron: "0 */5 * * *"
+  displayName: "On code change - Run Every 5 hours Rolling build"
+  branches:
+    include:
+      - main
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    dependsOn: []
+    jobs:
+      - template: ../templates/codequality-stage.yml
+        parameters: 
+            solution: 'Microsoft.Vmas.FirewallManager'
+            projectFolder: ['Microsoft.Vmas.FirewallManager.Service']
+            buildPlatform: 'Any CPU'
+            buildConfiguration: 'Release'
+  - stage: Build_DeployImage
+    dependsOn: [NonProd_CheckCodeQuality]
+    jobs:
+      - template: ../templates/docker-build-stage-common.yml
+        parameters:
+            solution: 'Microsoft.Vmas.FirewallManager'
+            project: 'Microsoft.Vmas.FirewallManager.Service'
+            devContainerRegistry: 'spn-crm-mw-dev'
+            prodContainerRegistry: 'spn-crm-mw-prod'
+            k8Path: './.k8s/common/firewall_broker_k8s.yml'
+            repo: 'firewallbroker'
+  - stage: NonProd_TagBranch
+    dependsOn: [NonProd_CheckCodeQuality,Build_DeployImage]
+    jobs:
+      - template: ../templates/tag-branch.yml
+        parameters: 
+                    tag_build: '$(Rev:.r)'
+                    tag_msg: 'Vmas.FirewallManager.FirewallBroker $(Date:yyMMdd)$(Rev:.r)'
+  - stage: NonProd_EastUS2_DeployFirewallBroker
+    dependsOn: [NonProd_TagBranch,NonProd_CheckCodeQuality,Build_DeployImage]
+    jobs:
+      - template: ../templates/deploy-release-added-common-stage.yml
+        parameters:
+            env: 'dev' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Dev'
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)' 
+            service: 'FirewallBroker'
+            label: 'FirewallService'
+            appConfigEndpoint: 'https://appcs-mw-dev-eus-002.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-dev.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-kvref-dev-eastus.json'
+            commonKVrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/common-kvref-dev-eastus.json'
+            k8ServiceConnection: 'spn-aks-mw-dev-eus'
+            k8File: '$(Build.ArtifactStagingDirectory)/../drop/common/firewall_broker_k8s.yml'
+            k8namespace: 'firewall'
+            registryUri: 'crmwdevscus.azurecr.io'
+            environment: 'development'
+            podBinding: 'pod-id-aks-mw-dev-eus-001'
+            aspNetCoreEnv: 'Development'
+            minReplica: '2'
+            maxReplica: '8'
+  - stage: Prod_EastUS2_DeployFirewallBroker
+    dependsOn: [NonProd_EastUS2_DeployFirewallBroker]
+    jobs:
+      - template: ../templates/deploy-release-added-common-stage.yml
+        parameters:
+            env: 'prod' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Prod'
+            serviceconnection: 'MyWorkspace Prod' 
+            service: 'FirewallService'
+            label: 'FirewallService'
+            appConfigEndpoint: 'https://appcs-mw-prod-eus-001.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-prod.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-kvref-prod-eastus2.json'
+            commonKVrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/common-kvref-prod-eastus.json'
+            k8ServiceConnection: 'spn-aks-mw-prod-eus-firewall-001'
+            k8File: '$(Build.ArtifactStagingDirectory)/../drop/common/firewall_broker_k8s.yml'
+            k8namespace: 'firewall'
+            registryUri: 'crmwprodshared.azurecr.io'
+            environment: 'production'
+            podBinding: 'pod-id-aks-mw-prod-eus-001'
+            aspNetCoreEnv: 'Production'
+            minReplica: '40'
+            maxReplica: '40'

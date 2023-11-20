@@ -1,0 +1,74 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+name: Production_FrontEnd_$(Date:yyMMdd)$(Rev:.r)
+
+pr: none
+
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+schedules:
+- cron: "0 22 * * 1-5"
+  displayName: "On code change - Run at 2PM on weekdays"
+  branches:
+    include:
+      - main
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    dependsOn: []
+    jobs:
+      - template: ../templates/codequality-stage.yml
+        parameters: 
+          solution: 'Microsoft.MyWorkspace.GatewayAggregator'
+          projectFolder: ['Microsoft.MyWorkspace.GatewayAggregator']
+          buildPlatform: 'Any CPU'
+          buildConfiguration: 'Release'
+      - template: ../templates/react-tests-stage.yml
+        parameters:
+          reactEnvironment: 'production'
+  - stage: Build_DeployImage
+    dependsOn: [NonProd_CheckCodeQuality]
+    jobs:
+      - template: ../templates/docker-build-stage-common.yml
+        parameters: 
+                    solution: 'Microsoft.MyWorkspace.GatewayAggregator'
+                    project: 'Microsoft.MyWorkspace.GatewayAggregator'
+                    devContainerRegistry: 'spn-crm-mw-dev'
+                    prodContainerRegistry: 'spn-crm-mw-prod'
+                    k8Path: './.k8s/common/frontend_k8s.yml'
+                    repo: 'frontend'
+                    isFrontend: true
+                    isProduction: true
+  - stage: NonProd_TagBranch
+    dependsOn: [NonProd_CheckCodeQuality,Build_DeployImage]
+    jobs:
+      - template: ../templates/tag-branch.yml
+        parameters: 
+                    tag_build: '$(Rev:.r)'
+                    tag_msg: 'Vmas.FrontEnd.Api $(Date:yyMMdd)$(Rev:.r)'
+  - stage: Prod_EastUS2_DeployFrontEnd
+    dependsOn: [NonProd_TagBranch,NonProd_CheckCodeQuality,Build_DeployImage]
+    jobs:
+      - template: ../templates/deploy-release.yml
+        parameters:
+            env: 'prod' 
+            deploylocation: 'EUS'
+            devOpsEnv: 'MW-Prod'
+            serviceconnection: 'MyWorkspace Prod' 
+            service: 'FrontEnd'
+            label: 'FrontEndApi'
+            appConfigEndpoint: 'https://appcs-mw-prod-eus-001.azconfig.io'
+            configFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-prod.json'
+            kvrefFile: '$(Build.ArtifactStagingDirectory)/../drop/Configs/config-kvref-prod-eastus2.json'
+            k8ServiceConnection: 'spn-aks-mw-prod-eus-001'
+            k8File: '$(Build.ArtifactStagingDirectory)/../drop/common/frontend_k8s.yml'
+            k8namespace: 'prod'
+            registryUri: 'crmwprodshared.azurecr.io'
+            environment: 'production'
+            podBinding: 'pod-id-aks-mw-prod-eus-001'
+            aspNetCoreEnv: 'Production'
+            minReplica: '8'
+            maxReplica: '32'

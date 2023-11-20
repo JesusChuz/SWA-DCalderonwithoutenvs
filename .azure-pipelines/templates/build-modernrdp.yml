@@ -1,0 +1,185 @@
+parameters:
+  - name: solution
+    type: string
+  - name: projectFolder
+    type: string
+  - name: buildPlatform
+    type: string
+  - name: buildConfiguration
+    type: object
+  - name: appName
+    type: string
+
+jobs:
+- ${{ each buildConfiguration in parameters.buildConfiguration }}:
+  - job: Build${{ buildConfiguration }}
+    displayName: "Build and Deploy Image - ${{ buildConfiguration }}"
+    pool:
+      vmImage: "windows-latest"
+    steps:
+      - task: UseDotNet@2
+        displayName: "Use .NET Core 6 sdk"
+        inputs:
+          version: "6.0.x"
+      - task: NuGetToolInstaller@1
+        inputs:
+          displayName: "Use NuGet 5"
+          versionSpec: "5.x"
+      - task: NuGetCommand@2
+        displayName: Nuget Restore
+        inputs:
+          command: "restore"
+          restoreSolution: "**/${{ parameters.solution }}.sln"
+          feedsToUse: "config"
+      - task: PowerShell@2
+        displayName: "Update version"
+        inputs:
+          targetType: 'inline'
+          script: |
+            $devPath = "$(System.DefaultWorkingDirectory)/$(solution)/$(projectFolder)/Properties/PublishProfiles/ClickOnceDevProfile.pubxml"
+            $prodPath = "$(System.DefaultWorkingDirectory)/$(solution)/$(projectFolder)/Properties/PublishProfiles/ClickOnceProdProfile.pubxml"
+            $configPath = "$(System.DefaultWorkingDirectory)/$(solution)/$(projectFolder)/App.config"
+            $yymm = Get-Date -format "yyMM"
+            Write-Host "##vso[task.setvariable variable=YYMM;]$yymm"
+            $dd = Get-Date -format "dd"
+            Write-Host "##vso[task.setvariable variable=DD;]$dd"
+            $hhmm = Get-Date -format "hhmm"
+            Write-Host "##vso[task.setvariable variable=HHMM;]$hhmm"
+            (Get-Content $devPath).replace('$YYMM', $yymm).replace('$DD', $dd).replace('$HHMM', $hhmm) | Set-Content $devPath
+            (Get-Content $prodPath).replace('$YYMM', $yymm).replace('$DD', $dd).replace('$HHMM', $hhmm) | Set-Content $prodPath
+            (Get-Content $configPath).replace('$YYMM', $yymm).replace('$DD', $dd).replace('$HHMM', $hhmm) | Set-Content $configPath
+
+      - task: VSBuild@1
+        displayName: "VSBuild Debug"
+        condition: ${{ eq(buildConfiguration, 'Debug') }}
+        inputs:
+          solution: "$(solution)"
+          platform: "$(buildPlatform)"
+          configuration: "${{ buildConfiguration }}"
+          msbuildArgs: "/t:publish /p:PublishProfile=$(System.DefaultWorkingDirectory)/$(solution)/$(projectFolder)/Properties/PublishProfiles/ClickOnceDevProfile.pubxml /p:PublishDir=bin/${{ buildConfiguration }}/net6.0-windows/publish"
+      - task: VSBuild@1
+        displayName: "VSBuild Release"
+        condition: ${{ eq(buildConfiguration, 'Release') }}
+        inputs:
+          solution: "$(solution)"
+          platform: "$(buildPlatform)"
+          configuration: "${{ buildConfiguration }}"
+          msbuildArgs: "/t:publish /p:PublishProfile=$(System.DefaultWorkingDirectory)/$(solution)/$(projectFolder)/Properties/PublishProfiles/ClickOnceProdProfile.pubxml /p:PublishDir=bin/${{ buildConfiguration }}/net6.0-windows/publish"
+      - task: EsrpCodeSigning@1
+        inputs:
+          ConnectedServiceName: "New VMAS Code Sign"
+          FolderPath: "$(Build.SourcesDirectory)/$(solution)/$(projectFolder)/bin/${{ buildConfiguration }}/net6.0-windows/publish/"
+          Pattern: "*.dll,*.exe"
+          signConfigType: "inlineSignParams"
+          inlineOperation: |
+            [{
+            "KeyCode" : "CP-230012",
+            "OperationCode" : "SigntoolSign",
+            "Parameters" : {
+            "OpusName" : "Microsoft",
+            "OpusInfo" : "http://www.microsoft.com",
+            "FileDigest" : "/fd \"SHA256\"",
+            "PageHash" : "/NPH",
+            "TimeStamp" : "/tr \"http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer\" /td sha256"
+            },
+            "ToolName" : "sign",
+            "ToolVersion" : "1.0"
+            },
+            {
+            "KeyCode" : "CP-230012",
+            "OperationCode" : "SigntoolVerify",
+            "Parameters" : {},
+            "ToolName" : "sign",
+            "ToolVersion" : "1.0"
+            }]
+          SessionTimeout: "60"
+          MaxConcurrency: "50"
+          MaxRetryAttempts: "5"
+      - task: CmdLine@2
+        displayName: "CmdLine@2 Debug"
+        condition: ${{ eq(buildConfiguration, 'Debug') }}
+        inputs:
+          script: '"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\mage.exe" -u "Application Files\ModernRdp.Debug_12_$(YYMM)_$(DD)_$(HHMM)\ModernRdp.Debug.dll.manifest"'
+          workingDirectory: "$(Build.SourcesDirectory)/$(solution)/$(projectFolder)/bin/${{ buildConfiguration }}/net6.0-windows/publish/"
+          failOnStderr: true
+      - task: CmdLine@2
+        displayName: "CmdLine@2 Release"
+        condition: ${{ eq(buildConfiguration, 'Release') }}
+        inputs:
+          script: '"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\mage.exe" -u "Application Files\ModernRdp_12_$(YYMM)_$(DD)_$(HHMM)\ModernRdp.dll.manifest"'
+          workingDirectory: "$(Build.SourcesDirectory)/$(solution)/$(projectFolder)/bin/${{ buildConfiguration }}/net6.0-windows/publish/"
+          failOnStderr: true
+      - task: EsrpCodeSigning@1
+        inputs:
+          ConnectedServiceName: "New VMAS Code Sign"
+          FolderPath: "$(Build.SourcesDirectory)/$(solution)/$(projectFolder)/bin/${{ buildConfiguration }}/net6.0-windows/publish/"
+          Pattern: "*.manifest"
+          signConfigType: "inlineSignParams"
+          inlineOperation: |
+            [{
+            "KeyCode" : "CP-230856",
+            "OperationCode" : "MageSignSHA256RFC3161",
+            "Parameters" : {
+                "OpusName" : "Microsoft",
+                "OpusInfo" : "http://www.microsoft.com"
+            },
+            "ToolName" : "sign",
+            "ToolVersion" : "1.0"
+            },
+            {
+            "KeyCode" : "CP-230856",
+            "OperationCode" : "MageSignSHA256RFC3161",
+            "Parameters" : {},
+            "ToolName" : "sign",
+            "ToolVersion" : "1.0"
+            }]
+          SessionTimeout: "60"
+          MaxConcurrency: "50"
+          MaxRetryAttempts: "5"
+          VerboseLogin: true
+      - task: CmdLine@2
+        displayName: "CmdLine@2 Debug"
+        condition: ${{ eq(buildConfiguration, 'Debug') }}
+        inputs:
+          script: '"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\mage.exe" -u ModernRdp.Debug.application -appm "Application Files\ModernRdp.Debug_12_$(YYMM)_$(DD)_$(HHMM)\ModernRdp.Debug.dll.manifest"'
+          workingDirectory: "$(Build.SourcesDirectory)/$(solution)/$(projectFolder)/bin/${{ buildConfiguration }}/net6.0-windows/publish/"
+      - task: CmdLine@2
+        displayName: "CmdLine@2 Release"
+        condition: ${{ eq(buildConfiguration, 'Release') }}
+        inputs:
+          script: '"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\mage.exe" -u ModernRdp.application -appm "Application Files\ModernRdp_12_$(YYMM)_$(DD)_$(HHMM)\ModernRdp.dll.manifest"'
+          workingDirectory: "$(Build.SourcesDirectory)/$(solution)/$(projectFolder)/bin/${{ buildConfiguration }}/net6.0-windows/publish/"
+      - task: EsrpCodeSigning@1
+        inputs:
+          ConnectedServiceName: "New VMAS Code Sign"
+          FolderPath: "$(Build.SourcesDirectory)/$(solution)/$(projectFolder)/bin/${{ buildConfiguration }}/net6.0-windows/publish/"
+          Pattern: "*.application"
+          signConfigType: "inlineSignParams"
+          inlineOperation: |
+            [{
+            "KeyCode" : "CP-232959",
+            "OperationCode" : "MageSignSHA256RFC3161",
+            "Parameters" : {},
+            "ToolName" : "sign",
+            "ToolVersion" : "1.0"
+            },
+            {
+            "KeyCode" : "CP-232959",
+            "OperationCode" : "MageSignSHA256RFC3161",
+            "Parameters" : {},
+            "ToolName" : "sign",
+            "ToolVersion" : "1.0"
+            }]
+          SessionTimeout: "60"
+          MaxConcurrency: "50"
+          MaxRetryAttempts: "5"
+          VerboseLogin: true
+      - task: PublishSymbols@2
+        inputs:
+          SearchPattern: "**/bin/**/*.pdb"
+          SymbolServerType: "TeamServices"
+      - task: PublishBuildArtifacts@1
+        inputs:
+          PathtoPublish: "$(System.DefaultWorkingDirectory)/$(solution)/$(projectFolder)/bin/${{ buildConfiguration }}/net6.0-windows/publish/"
+          ArtifactName: "drop_${{ buildConfiguration }}"
+          publishLocation: "Container"

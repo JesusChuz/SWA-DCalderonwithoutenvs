@@ -1,0 +1,56 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+trigger: none
+
+parameters:
+  - name: useNugetPack
+    displayName: "Use 'nuget pack' (otherwise will default to 'dotnet pack') (NOTE - 'nuget pack' won't work for packages with multiple target frameworks, and 'dotnet pack' won't work for packages with locally referenced packages.)"
+    type: boolean
+    default: false
+  - name: projectFolder
+    displayName: "Select Project"
+    type: object
+    default:
+      [
+        "*.",
+        "Microsoft.Vmas.Common.AppConfiguration",
+        "Microsoft.Vmas.Common.AzureServiceBus",
+        "Microsoft.Vmas.Common.Storage",
+        "Microsoft.Vmas.Common.Telemetry",
+        "Microsoft.Vmas.Common.HttpClientService",
+        "Microsoft.Vmas.Common.HttpExtensions",
+        "Microsoft.Vmas.Common.Cache",
+        "Microsoft.MyWorkspace.Common.Logger",
+        "Microsoft.MyWorkspace.Common.Models",
+        "Microsoft.MyWorkspace.Mims"
+      ]
+
+variables:
+  - name: solution
+    value: "Microsoft.Vmas.Common"
+  - name: buildPlatform
+    value: "Any CPU"
+  - name: buildConfiguration
+    value: "Release"
+
+name: $(Date:yyMMdd)$(Rev:.r)
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    dependsOn: []
+    jobs:
+      - template: ../templates/codequality-stage.yml
+        parameters:
+          solution: "$(solution)"
+          projectFolder: ${{ parameters.projectFolder }}
+          buildPlatform: "$(buildPlatform)"
+          buildConfiguration: "$(buildConfiguration)"
+  - stage: Prod_BuildRelease
+    dependsOn: [NonProd_CheckCodeQuality]
+    jobs:
+      - template: ../templates/build-stage.yml
+        parameters:
+          solution: "$(solution)"
+          buildConfiguration: "$(buildConfiguration)"
+          projectFolder: ${{ parameters.projectFolder }}
+          useNugetPack: ${{ parameters.UseNugetPack }}

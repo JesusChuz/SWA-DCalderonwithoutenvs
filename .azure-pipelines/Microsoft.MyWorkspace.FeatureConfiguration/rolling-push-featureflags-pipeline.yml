@@ -1,0 +1,53 @@
+# Copyright (c) Microsoft. All rights reserved.
+name: Rolling_PushFeatureFlags_$(Date:yyMMdd)$(Rev:.r)
+pr: none
+trigger: none
+
+schedules:
+- cron: "0 */5 * * *"
+  displayName: "On code change - Run Every 5 hours Rolling build"
+  branches:
+    include:
+      - main
+
+stages:
+  - stage: Build_PublishArtifact
+    dependsOn: []
+    jobs:
+    - job: 'Copy_Publish'
+      steps:
+        - task: CopyFiles@2
+          inputs:
+              SourceFolder: '$(Build.SourcesDirectory)/.config/Feature-flags'
+              Contents: |
+                featureflag-dev.json
+                featureflag-prod.json
+              TargetFolder: '$(System.ArtifactsDirectory)/Feature-flags'
+        - task: PublishBuildArtifacts@1
+          displayName: Publish Artifact
+          inputs:
+              PathtoPublish: '$(System.ArtifactsDirectory)'
+              ArtifactName: 'drop'
+              publishLocation: 'Container'
+  - stage: NonProd_EastUS2_PushFeatureFlags
+    dependsOn: [Build_PublishArtifact]
+    jobs:
+      - template: ../templates/push-app-configuration.yml
+        parameters:
+            environment: 'MW-Dev' 
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)' 
+            appconfigurl: 'https://appcs-mw-dev-eus-002.azconfig.io'
+            folderpath: 'Feature-flags'
+            configfilename: 'featureflag-dev.json'  
+            contentType: 'application/vnd.microsoft.appconfig.ff+json;charset=utf-8'
+  - stage: Prod_EastUS2_PushFeatureFlags
+    dependsOn: [NonProd_EastUS2_PushFeatureFlags]
+    jobs:
+      - template: ../templates/push-app-configuration.yml
+        parameters:
+            environment: 'MW-Prod' 
+            serviceconnection: 'MyWorkspace Prod' 
+            appconfigurl: 'https://appcs-mw-prod-eus-001.azconfig.io'
+            folderpath: 'Feature-flags'
+            configfilename: 'featureflag-prod.json'  
+            contentType: 'application/vnd.microsoft.appconfig.ff+json;charset=utf-8'

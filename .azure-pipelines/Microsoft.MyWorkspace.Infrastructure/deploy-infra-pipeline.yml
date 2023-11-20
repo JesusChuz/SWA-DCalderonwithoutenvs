@@ -1,0 +1,69 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+name: deploy_MyWorkspace_Infrastructure_$(Date:yyMMdd)$(Rev:.r)
+pr: none
+trigger: none
+
+pool:
+  name: Azure Pipelines
+  vmImage: 'windows-latest'
+
+stages:
+  - stage: Build_PublishArtifact
+    dependsOn: []
+    jobs:
+    - job: 'Copy_Publish'
+      steps:
+        - task: CopyFiles@2
+          inputs:
+              SourceFolder: '$(Build.SourcesDirectory)/Microsoft.MyWorkspace.Infrastructure/Bicep'
+              Contents: '**'
+              TargetFolder: '$(System.ArtifactsDirectory)/Microsoft.MyWorkspace.Infrastructure/Bicep'
+        - task: PublishBuildArtifacts@1
+          displayName: Publish Artifact
+          inputs:
+              PathtoPublish: '$(System.ArtifactsDirectory)'
+              ArtifactName: 'drop'
+              publishLocation: 'Container'
+  - stage: NonProd_DeployRG_WestUS2
+    dependsOn: [Build_PublishArtifact]
+    jobs:
+      - template: ../templates/deploy-infra-resource-groups.yml
+        parameters:
+            deploymentType: 'resource-groups'
+            env: 'dev'
+            deploylocation: 'westus2'
+            devOpsEnv: 'MW-Infra-Dev-Primary' 
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)'
+  - stage: NonProd_DeployResources_WestUS2
+    dependsOn: [NonProd_DeployRG_WestUS2]
+    jobs:
+      - template: ../templates/deploy-infra-resources.yml
+        parameters:
+            deploymentType: 'resources'
+            env: 'dev'
+            deploylocation: 'westus2'
+            devOpsEnv: 'MW-Infra-Dev-Primary' 
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)'
+            resourceGroup: 'rg-mw-dev-westus2'
+  - stage: NonProd_DeployRG_SouthCentralUs
+    dependsOn: [Build_PublishArtifact]
+    jobs:
+      - template: ../templates/deploy-infra-resource-groups.yml
+        parameters:
+            deploymentType: 'resource-groups'
+            env: 'dev'
+            deploylocation: 'southcentralus'
+            devOpsEnv: 'MW-Infra-Dev-Primary' 
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)'
+  - stage: NonProd_DeployResources_SouthCentralUs
+    dependsOn: [NonProd_DeployRG_SouthCentralUs]
+    jobs:
+      - template: ../templates/deploy-infra-resources.yml
+        parameters:
+            deploymentType: 'resources'
+            env: 'dev'
+            deploylocation: 'southcentralus'
+            devOpsEnv: 'MW-Infra-Dev-Primary' 
+            serviceconnection: 'MyWorkspace Dev/Test (1d466822-2f06-46bc-9049-77506ad18492)'
+            resourceGroup: 'rg-mw-dev-southcentralus'

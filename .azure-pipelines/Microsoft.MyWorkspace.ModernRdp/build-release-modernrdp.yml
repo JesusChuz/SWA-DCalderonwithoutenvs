@@ -1,0 +1,39 @@
+# Copyright (c) Microsoft. All rights reserved.
+name: ModernRDP$(Date:yyMMdd)$(Rev:.r)
+
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+
+parameters:
+  - name: buildConfiguration
+    displayName: 'Build Configuration: Debug for Development, Release for Production. NOTE: Delete one from the default values for specific target'
+    type: object
+    default: ['Debug', 'Release']
+
+variables:
+  - name: solution
+    value: 'Microsoft.MyWorkspace.ModernRdp'
+  - name: buildPlatform
+    value: 'Any CPU'
+  - name: projectFolder
+    value: 'Microsoft.MyWorkspace.ModernRdp'
+
+stages:
+  - stage: NonProd_CheckCodeQuality
+    jobs:
+      - template: ../templates/codequality-modernrdp.yml
+        parameters:
+          solution: '$(solution)'
+          projectFolder: '$(projectFolder)'
+  - stage: NonProd_Build_Deploy
+    dependsOn: [NonProd_CheckCodeQuality]
+    jobs:
+      - template: ../templates/build-modernrdp.yml
+        parameters:
+          solution: '$(solution)'
+          projectFolder: '$(projectFolder)'
+          buildPlatform: '$(buildPlatform)'
+          buildConfiguration: ${{ parameters.buildConfiguration }}
+          appName: '$(name)'

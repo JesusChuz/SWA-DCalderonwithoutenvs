@@ -1,0 +1,130 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+name: E2E_Smoke_Test_Suite_$(Date:yyMMdd)$(Rev:.r)
+
+pr: none
+
+trigger: none
+
+pool:
+  vmImage: "windows-latest"
+
+schedules:
+  - cron: "0 6 * * *"
+    displayName: "Run once per day at 6:00"
+    branches:
+      include:
+        - main
+
+jobs:
+  - job: Run_Tests
+    timeoutInMinutes: 80
+    variables:
+      - name: e2e_working_directory
+        value: "$(Build.SourcesDirectory)/Microsoft.MyWorkspace.E2E"
+    steps:
+      - task: AzurePowershell@5
+        displayName: "Add IP to key vault firewall"
+        condition: always()
+        inputs:
+          ScriptType: InlineScript
+          azurePowerShellVersion: LatestVersion
+          azureSubscription: $(azureSubscription)
+          Inline: | 
+            ## Need to get agent ip address for key vault deployment. Access is denied due to network isolation.
+            $WebResponse = Invoke-WebRequest -Uri https://api.ipify.org/?format=json -UseBasicParsing
+            $IPAddress = $WebResponse.Content | ConvertFrom-Json | Select-Object -ExpandProperty ip
+            Add-AzKeyVaultNetworkRule -VaultName $(appKeyVaultName) -IpAddressRange $IPAddress
+            Write-Host ("##vso[task.setvariable variable=CURRENT_IP_ADDRESS;issecret=false]$IPAddress")
+      - task: AzurePowershell@5
+        displayName: "Get secrets and set as variables"
+        condition: always()
+        inputs:
+          ScriptType: InlineScript
+          azurePowerShellVersion: LatestVersion
+          azureSubscription: $(azureSubscription)
+          Inline: | 
+            $AppConfigurationConnection = Get-AzKeyVaultSecret -VaultName $(appKeyVaultName) -Name "AppConfigurationConnection" -AsPlainText
+            $ClientID = Get-AzKeyVaultSecret -VaultName $(appKeyVaultName) -Name "ClientID" -AsPlainText
+            $ClientSecret = Get-AzKeyVaultSecret -VaultName $(appKeyVaultName) -Name "ClientSecret" -AsPlainText
+            $TenantID = Get-AzKeyVaultSecret -VaultName $(appKeyVaultName) -Name "TenantID" -AsPlainText
+            Write-Host ("##vso[task.setvariable variable=APP_CONFIG_CONNECTION_STRING;]$AppConfigurationConnection")
+            Write-Host ("##vso[task.setvariable variable=AZURE_CLIENT_ID;]$ClientID")
+            Write-Host ("##vso[task.setvariable variable=AZURE_CLIENT_SECRET;]$ClientSecret")
+            Write-Host ("##vso[task.setvariable variable=AZURE_TENANT_ID;]$TenantID")
+            Write-Host ("##vso[task.setvariable variable=CI;]true")
+      - task: Npm@1
+        displayName: "NPM Install"
+        inputs:
+          workingDir: "$(e2e_working_directory)"
+          verbose: false
+          customEndpoint: "Coherence v4 Feed"
+      - script: |
+          npx playwright install
+        displayName: "Install playwright"
+      - script: |
+          npm run smoke-tests
+        displayName: "Run Smoke Tests"
+        workingDirectory: "$(e2e_working_directory)"
+      - task: AzurePowershell@5
+        displayName: "Remove IP from key vault firewall"
+        condition: always()
+        inputs:
+          ScriptType: InlineScript
+          azurePowerShellVersion: LatestVersion
+          azureSubscription: $(azureSubscription)
+          Inline: | 
+            Remove-AzKeyVaultNetworkRule -VaultName $(appKeyVaultName) -IpAddressRange '$(CURRENT_IP_ADDRESS)/32'
+      - task: PublishTestResults@2
+        displayName: "Publish JUnitTest Results"
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFiles: "junit-results.xml"
+          searchFolder: "$(e2e_working_directory)/results"
+          failTaskOnFailedTests: true
+      - task: PublishPipelineArtifact@1
+        displayName: "Publish results folder"
+        inputs:
+          targetPath: "$(e2e_working_directory)/results"
+          artifact: "results"
+          publishLocation: "pipeline"
+        condition: always()
+      - task: petergroenewegen.PeterGroenewegen-Xpirit-Vsts-Build-InlinePowershell.Xpirit-Vsts-Build-InlinePowershell.InlinePowershell@1
+        displayName: "E2E Tests Pipeline Failure - Teams Notification"
+        inputs:
+          Script: |
+            $body = @"
+            {
+              "@type": "MessageCard",
+              "@context": "http://schema.org/extensions",
+              "themeColor": "0076D7",
+              "summary": "Smoke Test Failure",
+              "sections": [{
+                "activityTitle": "Smoke Test Failure",
+                "activitySubtitle": "Build URI",
+                "activityImage": "https://cdn.vsassets.io/ext/ms.vss-build-web/common-library/Nav-Launch.3tiJhd.png",
+                "text": "Build Number: $(Build.BuildNumber)",
+                "facts": [{
+                    "name": "Link to Build",
+                    "value": "https://microsoftit.visualstudio.com/DefaultCollection/OneITVSO/_build/results?buildId=$(Build.BuildId)&view=ms.vss-test-web.build-test-results-tab"
+                }, {
+                    "name": "Trigger",
+                    "value": "$(Build.Reason)"
+                }],
+                "markdown": true
+              }],
+            }
+            "@
+
+            $params = @{
+              ContentType = 'application/json'
+              Headers = @{'accept' = 'application/json' }
+              Body = $body
+              Method = 'Post'
+              URI = $env:WEBHOOK_URI
+            }
+
+            Invoke-RestMethod @params
+        env:
+          WEBHOOK_URI: $(webhookURI)
+        condition: failed()

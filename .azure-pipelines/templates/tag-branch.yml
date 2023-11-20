@@ -1,0 +1,21 @@
+parameters:
+  - name: tag_build
+    type: string
+  - name: tag_msg
+    type: string
+
+jobs:
+  - job:
+    displayName: 'NonProd Tag Main Branch'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - checkout: self
+      persistCredentials: true
+    - powershell: |
+        git config  user.email "trafjam@microsoft.com"
+        git config  user.name "VMASVNext Team"
+        git tag -a v.parameters.tag_build -m "parameters.tag_msg"
+        #git push -q https://$(MSFBuildIdentityToken)@microsoftit.visualstudio.com/OneITVSO/_git/E36-MWS-CEAA-VMAS-VMASVNext --tags
+        Write-Host "Created new tag v.parameters.tag_build - parameters.tag_msg"
+      displayName: 'Tag Main Branch v.$(tag_build)'

@@ -1,0 +1,74 @@
+parameters:
+  - name: solution
+    type: string
+  - name: buildConfiguration
+    type: string
+  - name: projectFolder
+    type: object
+  - name: useNugetPack
+    type: boolean
+
+jobs:
+- ${{ each projectFolder in parameters.projectFolder }}:
+  - job:
+    displayName: "Build and Release - ${{ projectFolder }}"
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - task: NuGetToolInstaller@1
+      inputs:
+        checkLatest: true
+    - task: NuGetCommand@2
+      displayName: Restore NuGet Packages
+      inputs:
+        command: 'restore'
+        restoreSolution: '**/${{ parameters.solution }}/*.sln'
+        feedsToUse: 'config'
+#    - task: UseDotNet@2
+#      displayName: 'Use .NET Core sdk 5'
+#      inputs:
+#        packageType: 'sdk'
+#        version: '5.x'     
+    - task: DotNetCoreCLI@2
+      displayName: Build
+      inputs:
+        command: build
+        projects:  "${{ parameters.solution }}/${{ projectFolder }}"
+        arguments: '--configuration ${{ parameters.buildConfiguration }}' 
+
+    - task: NuGetCommand@2
+      displayName: Pack NuGet Package (Using 'nuget pack')
+      condition: ${{ eq(parameters.useNugetPack, true) }}
+      inputs:
+        command: 'pack'
+        packagesToPack:  "**/${{ projectFolder }}.csproj; !**/*Tests.csproj"  
+        includeReferencedProjects: true 
+        versioningScheme: 'off'
+
+    - task: DotNetCoreCLI@2
+      displayName: Pack NuGet Package (Using 'dotnet pack')
+      condition: ${{ eq(parameters.useNugetPack, false) }}
+      inputs:
+        command: 'pack'
+        packagesToPack:  "**/${{ projectFolder }}/*.csproj; !**/*Tests.csproj"  
+        versioningScheme: 'off'
+        configuration: '${{ parameters.buildConfiguration }}'
+
+    - task: CopyFiles@2
+      inputs:
+        SourceFolder: '$(build.sourcesdirectory)\'
+        Contents: '**\*.nupkg'
+        TargetFolder: '$(build.artifactstagingdirectory)\'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
+
+    - task: NuGetCommand@2
+      inputs:
+        command: 'push'
+        packagesToPush: '$(Build.ArtifactStagingDirectory)/**/*.nupkg;!$(Build.ArtifactStagingDirectory)/**/*.symbols.nupkg'
+        nuGetFeedType: 'internal'
+        publishVstsFeed: '3d1a556d-2042-4a45-9dae-61808ff33d3b/b5813d24-b50d-40c1-b60b-15366baf91a1'

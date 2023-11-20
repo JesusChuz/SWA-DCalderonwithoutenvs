@@ -1,0 +1,18 @@
+{
+  "name": "bundlesizes",
+  "version": "1.0.0",
+  "description": "publish bundle sizes",
+  "main": "index.js",
+  "scripts": {
+    "local": "node index.js local",
+    "development": "node index.js development",
+    "production": "node index.js production",
+    "audit": "npm audit --registry https://registry.npmjs.org",
+    "audit:fix": "npm audit fix --registry https://registry.npmjs.org"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "applicationinsights": "^2.7.0"
+  }
+}

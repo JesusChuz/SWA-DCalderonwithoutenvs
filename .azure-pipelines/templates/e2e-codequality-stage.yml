@@ -1,0 +1,32 @@
+parameters:
+  - name: reactEnvironment
+    type: string
+
+jobs:
+  - job:
+    variables:
+      - name: e2e_working_directory
+        value: "$(Build.SourcesDirectory)/Microsoft.MyWorkspace.E2E"
+    displayName: 'NonProd Playwright Code Quality Checks'
+    pool:
+      vmImage: 'ubuntu-latest'
+      demands:
+        - npm
+    steps:
+      - task: Npm@1
+        displayName: "NPM Install"
+        inputs:
+          workingDir: "$(e2e_working_directory)"
+          verbose: false
+      - task: Npm@1
+        displayName: 'NPM - check prettier'
+        inputs:
+          command: 'custom'
+          workingDir: "$(e2e_working_directory)"
+          customCommand: 'run prettier:check'
+      - task: Npm@1
+        displayName: 'NPM - check lint'
+        inputs:
+          command: 'custom'
+          workingDir: "$(e2e_working_directory)"
+          customCommand: 'run lint'
